@@ -1,0 +1,113 @@
+<UserControl x:Class="IrisQuickQuery.App.Views.ConnectionPage"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:IrisQuickQuery.App.Converters">
+    <UserControl.Resources>
+        <conv:BoolToVisibilityConverter x:Key="BoolVisible"/>
+        <Style x:Key="ConnectionTextBox" TargetType="TextBox" BasedOn="{StaticResource {x:Type TextBox}}">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+        </Style>
+        <Style x:Key="ConnectionPasswordBox" TargetType="PasswordBox">
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="10,0"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Background" Value="White"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <ScrollViewer x:Name="ConnectionScrollViewer" VerticalScrollBarVisibility="Auto"
+                      PreviewMouseWheel="PageScrollViewer_OnPreviewMouseWheel">
+            <StackPanel Margin="28,24,28,40" MaxWidth="900" HorizontalAlignment="Left">
+                <TextBlock Style="{StaticResource PageTitle}" Text="IRIS ODBC 连接"/>
+                <TextBlock Style="{StaticResource PageSubtitle}" Text="默认使用无 DSN 的 64 位 IRIS ODBC35；已有 DSN 也可直接选择。数据库账号必须由 IRIS 侧授予只读权限。"/>
+
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <Grid>
+                            <TextBlock Text="环境检查" FontSize="15" FontWeight="SemiBold"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="重新扫描" Command="{Binding RescanCommand}" HorizontalAlignment="Right"/>
+                        </Grid>
+                        <TextBlock Text="{Binding EnvironmentStatus}" Foreground="{StaticResource TextMutedBrush}" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <Border x:Name="ConnectionFieldsCard" Style="{StaticResource Card}" Width="500" HorizontalAlignment="Left">
+                    <Grid>
+                        <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+
+                        <StackPanel Margin="0,0,10,14">
+                            <TextBlock Text="64 位驱动" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="DriverComboBox" ItemsSource="{Binding AvailableDrivers}" Text="{Binding DriverName}" IsEditable="True"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Margin="10,0,0,14">
+                            <TextBlock Text="现有 DSN（可选）" Margin="0,0,0,4"/>
+                            <ComboBox x:Name="DsnComboBox" ItemsSource="{Binding AvailableDsns}" Text="{Binding Dsn}" IsEditable="True"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="1" Margin="0,0,10,14">
+                            <TextBlock Text="服务器地址" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding Host}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,14">
+                            <TextBlock Text="端口" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding Port}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="2" Margin="0,0,10,14">
+                            <TextBlock Text="Namespace" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding Namespace}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="2" Grid.Column="1" Margin="10,0,0,14">
+                            <TextBlock Text="只读用户名" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding Username}"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Row="3" Margin="0,0,10,14">
+                            <TextBlock Text="密码" Margin="0,0,0,4"/>
+                            <Grid>
+                                <PasswordBox x:Name="ConnectionPasswordBox" Style="{StaticResource ConnectionPasswordBox}" PasswordChanged="PasswordBox_OnPasswordChanged" GotKeyboardFocus="PasswordBox_OnGotKeyboardFocus"/>
+                                <TextBlock x:Name="SavedPasswordPlaceholder" Text="********" FontSize="16" Margin="12,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False"
+                                           Visibility="{Binding IsPasswordPlaceholderVisible,Converter={StaticResource BoolVisible}}"/>
+                            </Grid>
+                            <TextBlock x:Name="SavedPasswordStatus" Text="已保存服务器密码，软件升级不会清除" Foreground="#287A5B" FontSize="11" Margin="2,4,0,0"
+                                       Visibility="{Binding HasSavedPassword,Converter={StaticResource BoolVisible}}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,0,0,14">
+                            <TextBlock Text="TLS 配置名称（可选）" Margin="0,0,0,4"/>
+                            <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding TlsConfigurationName}"/>
+                        </StackPanel>
+
+                        <CheckBox Grid.Row="4" Content="使用 Windows 当前用户 DPAPI 保存密码" IsChecked="{Binding SavePassword}" VerticalAlignment="Center"/>
+                        <StackPanel Grid.Row="4" Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Style="{StaticResource SecondaryButton}" Content="测试连接" Command="{Binding TestCommand}" Margin="0,0,8,0"/>
+                            <Button Content="保存连接" Command="{Binding SaveCommand}"/>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <Border Style="{StaticResource Card}" Background="#FFF8EA" BorderBrush="#E7C889">
+                    <TextBlock Text="TLS 提示：配置名称只表示已请求使用对应驱动配置。若驱动无法返回协商状态，应用会保持“未验证”，不会把连接误标为已加密。" Foreground="#7A5315"/>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border x:Name="ConnectionNotification" Panel.ZIndex="20"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="28" Padding="16,13" MaxWidth="430"
+                Background="#FFF4CE" BorderBrush="#E1B84B" BorderThickness="1" CornerRadius="10"
+                Visibility="{Binding IsNotificationVisible,Converter={StaticResource BoolVisible}}">
+            <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="3" Opacity="0.22" Color="#6B5520"/></Border.Effect>
+            <Grid>
+                <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                <TextBlock Text="●" Foreground="#B7791F" Margin="0,0,10,0" VerticalAlignment="Top"/>
+                <TextBlock Grid.Column="1" Text="{Binding NotificationMessage}" Foreground="#684A10" FontWeight="SemiBold" TextWrapping="Wrap"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

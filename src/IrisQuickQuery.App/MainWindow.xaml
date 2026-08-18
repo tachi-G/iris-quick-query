@@ -1,0 +1,127 @@
+<Window x:Class="IrisQuickQuery.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="clr-namespace:IrisQuickQuery.App.ViewModels"
+        xmlns:views="clr-namespace:IrisQuickQuery.App.Views"
+        Title="IRIS 元素化快捷查询" Width="1200" Height="860" MinWidth="1100" MinHeight="680"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <DataTemplate DataType="{x:Type vm:QueryViewModel}"><views:QueryPage/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ElementConfigurationPageViewModel}"><views:ElementsPage/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:RuleConfigurationPageViewModel}"><views:RulesPage/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:ConnectionViewModel}"><views:ConnectionPage/></DataTemplate>
+        <DataTemplate DataType="{x:Type vm:AboutViewModel}"><views:AboutPage/></DataTemplate>
+
+        <Style x:Key="QueryNavButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="query">
+                    <Setter Property="Background" Value="{StaticResource NavigationSelectedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ElementsNavButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="elements">
+                    <Setter Property="Background" Value="{StaticResource NavigationSelectedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="RulesNavButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="rules">
+                    <Setter Property="Background" Value="{StaticResource NavigationSelectedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="ConnectionNavButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="connection">
+                    <Setter Property="Background" Value="{StaticResource NavigationSelectedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="AboutNavButton" TargetType="Button" BasedOn="{StaticResource NavButton}">
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding CurrentSection}" Value="about">
+                    <Setter Property="Background" Value="{StaticResource NavigationSelectedBrush}"/>
+                    <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid Background="{StaticResource BackgroundBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="216"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <Border Grid.Column="0" Background="{StaticResource SurfaceMutedBrush}"
+                BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,1,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <Grid Margin="20,20,16,24">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                    <Border Width="40" Height="40" Background="{StaticResource PrimaryBrush}" HorizontalAlignment="Left">
+                        <TextBlock Text="IQ" Foreground="White" FontWeight="SemiBold" FontSize="15"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="IRIS 快捷查询" FontSize="15" FontWeight="SemiBold"/>
+                        <TextBlock Text="临床数据工作台" Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Grid.Row="1">
+                    <TextBlock Text="工作区" Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="20,0,0,8"/>
+                    <Button Style="{StaticResource QueryNavButton}" Content="01    快捷查询"
+                            Command="{Binding NavigateCommand}" CommandParameter="query"/>
+                    <Button Style="{StaticResource ElementsNavButton}" Content="02    元素配置"
+                            Command="{Binding NavigateCommand}" CommandParameter="elements"/>
+                    <Button Style="{StaticResource RulesNavButton}" Content="03    SQL 规则"
+                            Command="{Binding NavigateCommand}" CommandParameter="rules"/>
+                    <Button Style="{StaticResource ConnectionNavButton}" Content="04    连接设置"
+                            Command="{Binding NavigateCommand}" CommandParameter="connection"/>
+                    <Button Style="{StaticResource AboutNavButton}" Content="05    关于"
+                            Command="{Binding NavigateCommand}" CommandParameter="about"/>
+                </StackPanel>
+
+                <Border Grid.Row="2" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,1,0,0"
+                        Padding="20,16" Background="{StaticResource SurfaceMutedBrush}">
+                    <StackPanel>
+                        <TextBlock Text="安全边界" FontWeight="SemiBold"/>
+                        <TextBlock Text="只执行参数化 SELECT" Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="0,4,0,0"/>
+                        <TextBlock Text="查询结果仅驻留内存" Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="0,2,0,0"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="52"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <Border Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="0,0,0,1">
+                <Grid Margin="32,0">
+                    <TextBlock Text="{Binding CurrentTitle,StringFormat=工作区  /  {0}}"
+                               Foreground="{StaticResource TextMutedBrush}" FontSize="13" VerticalAlignment="Center"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                        <Border Width="8" Height="8" Background="{StaticResource SuccessBrush}" Margin="0,0,8,0"/>
+                        <TextBlock Text="单机只读"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+            <ContentControl Grid.Row="1" Content="{Binding CurrentPage}"/>
+        </Grid>
+    </Grid>
+</Window>

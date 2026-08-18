@@ -1,0 +1,17 @@
+.build/
+.tools/
+**/bin/
+**/obj/
+artifacts/
+tmp/
+.vs/
+TestResults/
+*.db
+*.db-shm
+*.db-wal
+Logs/
+Backups/
+*.irisqconfig
+*.user
+*.suo
+*.log

@@ -1,0 +1,10 @@
+<UserControl x:Class="IrisQuickQuery.App.Controls.SqlEditor"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <Border BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" Background="#FBFCFC">
+        <RichTextBox x:Name="Editor" BorderThickness="0" Padding="12" FontFamily="Cascadia Mono,Consolas" FontSize="13"
+                     AcceptsTab="True" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                     TextChanged="Editor_OnTextChanged" LostKeyboardFocus="Editor_OnLostKeyboardFocus"
+                     PreviewMouseDoubleClick="Editor_OnPreviewMouseDoubleClick"/>
+    </Border>
+</UserControl>
