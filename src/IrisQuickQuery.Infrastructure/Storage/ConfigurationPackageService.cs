@@ -11,6 +11,10 @@ public sealed record RuleElementPackageManifest(int FormatVersion, int RuleSchem
     string MinAppVersion, int RuleCount, int ElementCount, string ContentType,
     string RulesSha256, string ElementsSha256);
 
+public sealed record QueryObjectPackageManifest(int FormatVersion, int RuleSchemaVersion, DateTimeOffset CreatedAt,
+    string MinAppVersion, int QueryObjectCount, int RuleCount, int ElementCount, string ContentType,
+    string QueryObjectsSha256, string RulesSha256, string ElementsSha256);
+
 internal sealed record RulePackageManifestV2(int FormatVersion, int RuleSchemaVersion, DateTimeOffset CreatedAt,
     string MinAppVersion, int RuleCount, string ContentType, string RulesSha256);
 
@@ -20,11 +24,14 @@ internal sealed record LegacyConfigurationPackageManifest(int FormatVersion, int
 public sealed record ImportedRulePackage(
     IReadOnlyList<QueryRuleDefinition> Rules,
     IReadOnlyList<ElementDefinition> Elements,
-    bool IncludesElements);
+    bool IncludesElements,
+    IReadOnlyList<QueryObjectDefinition> QueryObjects);
 
 public sealed class ConfigurationPackageService
 {
-    private const int CurrentFormatVersion = 3;
+    private const int CurrentFormatVersion = 4;
+    private const int RuleElementFormatVersion = 3;
+    private const string QueryObjectContentType = "iris-query-objects-with-elements";
     private const string RuleElementContentType = "iris-query-rules-with-elements";
     private const string LegacyRuleContentType = "iris-query-rules";
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web) { WriteIndented = true };
@@ -32,7 +39,15 @@ public sealed class ConfigurationPackageService
     public async Task<int> ExportRulesAsync(IReadOnlyCollection<QueryRuleDefinition> rules,
         IReadOnlyCollection<ElementDefinition> elements, string path, CancellationToken cancellationToken = default)
     {
-        var ruleCopies = rules.Select(CloneRule).ToArray();
+        var migration = QueryObjectCompiler.MigrateRules(rules);
+        return await ExportQueryObjectsAsync(migration.QueryObjects, elements, path, cancellationToken);
+    }
+
+    public async Task<int> ExportQueryObjectsAsync(IReadOnlyCollection<QueryObjectDefinition> queryObjects,
+        IReadOnlyCollection<ElementDefinition> elements, string path, CancellationToken cancellationToken = default)
+    {
+        var objectCopies = queryObjects.Select(CloneQueryObject).ToArray();
+        var ruleCopies = QueryObjectCompiler.Compile(objectCopies).Select(CloneRule).ToArray();
         var referencedKeys = GetReferencedElementKeys(ruleCopies);
         var elementsByKey = elements
             .Where(x => !string.IsNullOrWhiteSpace(x.Key))
@@ -52,16 +67,18 @@ public sealed class ConfigurationPackageService
             .ThenBy(x => x.DisplayOrder)
             .ThenBy(x => x.Key, StringComparer.OrdinalIgnoreCase)
             .ToArray();
-        ValidatePackageConfiguration(ruleCopies, elementCopies);
+        ValidatePackageConfiguration(ruleCopies, elementCopies, objectCopies);
 
+        var objectBytes = JsonSerializer.SerializeToUtf8Bytes(objectCopies, JsonOptions);
         var ruleBytes = JsonSerializer.SerializeToUtf8Bytes(ruleCopies, JsonOptions);
         var elementBytes = JsonSerializer.SerializeToUtf8Bytes(elementCopies, JsonOptions);
-        var manifest = new RuleElementPackageManifest(CurrentFormatVersion, ConfigurationSnapshot.CurrentSchemaVersion,
-            DateTimeOffset.UtcNow, "1.0.15", ruleCopies.Length, elementCopies.Length, RuleElementContentType,
-            ComputeChecksum(ruleBytes), ComputeChecksum(elementBytes));
+        var manifest = new QueryObjectPackageManifest(CurrentFormatVersion, ConfigurationSnapshot.CurrentSchemaVersion,
+            DateTimeOffset.UtcNow, "1.0.16", objectCopies.Length, ruleCopies.Length, elementCopies.Length,
+            QueryObjectContentType, ComputeChecksum(objectBytes), ComputeChecksum(ruleBytes), ComputeChecksum(elementBytes));
 
         await using var stream = File.Create(path);
         using var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true);
+        await WriteEntryAsync(archive, "query-objects.json", objectBytes, cancellationToken);
         await WriteEntryAsync(archive, "rules.json", ruleBytes, cancellationToken);
         await WriteEntryAsync(archive, "elements.json", elementBytes, cancellationToken);
         await WriteEntryAsync(archive, "manifest.json", JsonSerializer.SerializeToUtf8Bytes(manifest, JsonOptions), cancellationToken);
@@ -80,14 +97,52 @@ public sealed class ConfigurationPackageService
 
         return versionNode.GetInt32() switch
         {
-            CurrentFormatVersion => await ImportCurrentPackageAsync(archive, manifestBytes, cancellationToken),
+            CurrentFormatVersion => await ImportQueryObjectPackageAsync(archive, manifestBytes, cancellationToken),
+            RuleElementFormatVersion => await ImportRuleElementPackageAsync(archive, manifestBytes, cancellationToken),
             2 => await ImportV2RulesAsync(archive, manifestBytes, cancellationToken),
             1 => await ImportLegacyRulesAsync(archive, manifestBytes, cancellationToken),
             _ => throw new NotSupportedException("规则包版本高于当前应用支持范围。")
         };
     }
 
-    private static async Task<ImportedRulePackage> ImportCurrentPackageAsync(ZipArchive archive,
+    private static async Task<ImportedRulePackage> ImportQueryObjectPackageAsync(ZipArchive archive,
+        byte[] manifestBytes, CancellationToken cancellationToken)
+    {
+        var manifest = JsonSerializer.Deserialize<QueryObjectPackageManifest>(manifestBytes, JsonOptions)
+            ?? throw new InvalidDataException("规则包 manifest 无效。");
+        if (manifest.RuleSchemaVersion > ConfigurationSnapshot.CurrentSchemaVersion
+            || !string.Equals(manifest.ContentType, QueryObjectContentType, StringComparison.Ordinal))
+            throw new NotSupportedException("规则包内容或版本不受支持。");
+
+        var objectBytes = await ReadEntryAsync(archive, "query-objects.json", cancellationToken);
+        var ruleBytes = await ReadEntryAsync(archive, "rules.json", cancellationToken);
+        var elementBytes = await ReadEntryAsync(archive, "elements.json", cancellationToken);
+        VerifyChecksum(objectBytes, manifest.QueryObjectsSha256);
+        VerifyChecksum(ruleBytes, manifest.RulesSha256);
+        VerifyChecksum(elementBytes, manifest.ElementsSha256);
+        var queryObjects = JsonSerializer.Deserialize<List<QueryObjectDefinition>>(objectBytes, JsonOptions)
+            ?? throw new InvalidDataException("查询对象内容无效。");
+        var packagedRules = JsonSerializer.Deserialize<List<QueryRuleDefinition>>(ruleBytes, JsonOptions)
+            ?? throw new InvalidDataException("规则内容无效。");
+        var elements = JsonSerializer.Deserialize<List<ElementDefinition>>(elementBytes, JsonOptions)
+            ?? throw new InvalidDataException("全局元素内容无效。");
+        if (queryObjects.Count != manifest.QueryObjectCount || packagedRules.Count != manifest.RuleCount
+            || elements.Count != manifest.ElementCount)
+            throw new InvalidDataException("规则包数量与清单不一致。");
+
+        var compiledPackagedRules = QueryObjectCompiler.Compile(queryObjects);
+        if (!RulesEquivalent(compiledPackagedRules, packagedRules))
+            throw new InvalidDataException("规则包中的查询对象与可执行规则不一致。");
+
+        var preparedElements = PrepareImportedElements(elements);
+        var preparedObjects = PrepareImportedQueryObjects(queryObjects);
+        var preparedRules = QueryObjectCompiler.Compile(preparedObjects);
+        ValidatePackageConfiguration(preparedRules, preparedElements, preparedObjects);
+        ValidateExactElementReferences(preparedRules, preparedElements);
+        return new ImportedRulePackage(preparedRules, preparedElements, true, preparedObjects);
+    }
+
+    private static async Task<ImportedRulePackage> ImportRuleElementPackageAsync(ZipArchive archive,
         byte[] manifestBytes, CancellationToken cancellationToken)
     {
         var manifest = JsonSerializer.Deserialize<RuleElementPackageManifest>(manifestBytes, JsonOptions)
@@ -119,7 +174,7 @@ public sealed class ConfigurationPackageService
         if (unused.Length > 0)
             throw new InvalidDataException("规则包包含未被任何规则使用的全局元素：" + string.Join("、", unused));
 
-        return new ImportedRulePackage(preparedRules, preparedElements, true);
+        return new ImportedRulePackage(preparedRules, preparedElements, true, []);
     }
 
     private static async Task<ImportedRulePackage> ImportV2RulesAsync(ZipArchive archive,
@@ -136,7 +191,7 @@ public sealed class ConfigurationPackageService
         var rules = JsonSerializer.Deserialize<List<QueryRuleDefinition>>(ruleBytes, JsonOptions)
             ?? throw new InvalidDataException("规则内容无效。");
         if (rules.Count != manifest.RuleCount) throw new InvalidDataException("规则包数量与清单不一致。");
-        return new ImportedRulePackage(PrepareImportedRules(rules), [], false);
+        return new ImportedRulePackage(PrepareImportedRules(rules), [], false, []);
     }
 
     private static async Task<ImportedRulePackage> ImportLegacyRulesAsync(ZipArchive archive,
@@ -151,7 +206,7 @@ public sealed class ConfigurationPackageService
         VerifyChecksum(configBytes, manifest.ConfigurationSha256);
         var snapshot = JsonSerializer.Deserialize<ConfigurationSnapshot>(configBytes, JsonOptions)
             ?? throw new InvalidDataException("旧配置内容无效。");
-        return new ImportedRulePackage(PrepareImportedRules(snapshot.Rules), [], false);
+        return new ImportedRulePackage(PrepareImportedRules(snapshot.Rules), [], false, []);
     }
 
     private static HashSet<string> GetReferencedElementKeys(IEnumerable<QueryRuleDefinition> rules)
@@ -212,10 +267,61 @@ public sealed class ConfigurationPackageService
         return result;
     }
 
-    private static void ValidatePackageConfiguration(IReadOnlyCollection<QueryRuleDefinition> rules,
+    private static IReadOnlyList<QueryObjectDefinition> PrepareImportedQueryObjects(IEnumerable<QueryObjectDefinition> source)
+    {
+        var result = source.Select(CloneQueryObject).ToArray();
+        var objectOrder = 10;
+        foreach (var queryObject in result)
+        {
+            queryObject.Id = Guid.NewGuid();
+            queryObject.Name ??= string.Empty;
+            queryObject.BaseSqlTemplate ??= string.Empty;
+            queryObject.OutputMappings ??= [];
+            queryObject.Entries ??= [];
+            queryObject.DisplayOrder = objectOrder;
+            objectOrder += 10;
+            var entryOrder = 10;
+            foreach (var entry in queryObject.Entries)
+            {
+                entry.Id = Guid.NewGuid();
+                entry.RuntimeRuleId = Guid.NewGuid();
+                entry.Name ??= string.Empty;
+                entry.FilterTemplate ??= string.Empty;
+                entry.OrderByTemplate ??= string.Empty;
+                entry.DisplayOrder = entryOrder;
+                entryOrder += 10;
+            }
+        }
+        return result;
+    }
+
+    private static void ValidateExactElementReferences(IReadOnlyCollection<QueryRuleDefinition> rules,
         IReadOnlyCollection<ElementDefinition> elements)
     {
-        var snapshot = new ConfigurationSnapshot { Elements = elements.Select(CloneElement).ToList(), Rules = rules.Select(CloneRule).ToList() };
+        var referencedKeys = GetReferencedElementKeys(rules);
+        var packagedKeys = elements.Select(x => x.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = referencedKeys.Where(x => !packagedKeys.Contains(x)).OrderBy(x => x).ToArray();
+        if (missing.Length > 0)
+            throw new InvalidDataException("规则包缺少规则依赖的全局元素：" + string.Join("、", missing));
+        var unused = packagedKeys.Where(x => !referencedKeys.Contains(x)).OrderBy(x => x).ToArray();
+        if (unused.Length > 0)
+            throw new InvalidDataException("规则包包含未被任何规则使用的全局元素：" + string.Join("、", unused));
+    }
+
+    private static bool RulesEquivalent(IReadOnlyCollection<QueryRuleDefinition> left,
+        IReadOnlyCollection<QueryRuleDefinition> right)
+        => JsonSerializer.Serialize(left, JsonOptions) == JsonSerializer.Serialize(right, JsonOptions);
+
+    private static void ValidatePackageConfiguration(IReadOnlyCollection<QueryRuleDefinition> rules,
+        IReadOnlyCollection<ElementDefinition> elements,
+        IReadOnlyCollection<QueryObjectDefinition>? queryObjects = null)
+    {
+        var snapshot = new ConfigurationSnapshot
+        {
+            Elements = elements.Select(CloneElement).ToList(),
+            QueryObjects = queryObjects?.Select(CloneQueryObject).ToList() ?? [],
+            Rules = rules.Select(CloneRule).ToList()
+        };
         var errors = ConfigurationValidator.Validate(snapshot).Where(x => !x.IsWarning).Select(x => x.Message).ToArray();
         if (errors.Length > 0) throw new InvalidDataException("规则包配置无效：" + string.Join("；", errors.Take(8)));
     }
@@ -225,6 +331,9 @@ public sealed class ConfigurationPackageService
 
     private static ElementDefinition CloneElement(ElementDefinition value)
         => JsonSerializer.Deserialize<ElementDefinition>(JsonSerializer.Serialize(value, JsonOptions), JsonOptions)!;
+
+    private static QueryObjectDefinition CloneQueryObject(QueryObjectDefinition value)
+        => JsonSerializer.Deserialize<QueryObjectDefinition>(JsonSerializer.Serialize(value, JsonOptions), JsonOptions)!;
 
     private static string ComputeChecksum(byte[] content) => Convert.ToHexString(SHA256.HashData(content));
 

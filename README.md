@@ -1,8 +1,8 @@
 # IRIS 快捷查询
 
-面向医院项目运维人员的 Windows 单机只读查询工具。应用将患者标识、登记号、内部 ID、就诊日期等信息抽象为全局业务元素，再通过参数化 SQL 规则描述元素之间的查询关系，让使用者从任意已知字段出发，逐步获得相关信息。
+面向医院项目运维人员的 Windows 单机只读查询工具。应用将患者标识、登记号、内部 ID、就诊日期等信息抽象为全局业务元素，再通过“查询对象 + 查询入口”描述元素之间的查询关系，让使用者从任意已知字段出发，逐步获得相关信息。
 
-当前基准版本：`1.0.15`
+当前基准版本：`1.0.16`
 
 > 本项目只负责安全地组织和执行只读查询。数据库账号仍必须由服务器端限制为只读，客户端校验不能替代数据库权限。
 
@@ -12,8 +12,9 @@
 - **依赖自动调度**：根据现有元素值运行输入已就绪的规则，支持级联查询、循环收敛和输入变化后的重新执行。
 - **多结果交互**：单行结果自动选择，多行结果由使用者确认后继续查询。
 - **冲突保护**：同一元素出现不同非空值时停止其下游规则，避免静默覆盖。
-- **配置原子保存**：元素和 SQL 规则作为一份当前配置保存，快速重复操作不会并发写坏配置。
-- **规则包导入导出**：支持带版本和 SHA-256 校验和的 `.irisqconfig` 规则包，并安全合并规则实际引用的元素。
+- **查询对象复用**：同一数据来源的公共 SELECT 和输出映射只配置一次，通过多个查询入口支持不同全局元素检索。
+- **配置原子保存**：元素、查询对象和查询入口作为一份当前配置保存，快速重复操作不会并发写坏配置。
+- **规则包导入导出**：支持带版本和 SHA-256 校验和的 `.irisqconfig` 规则包，保留查询对象结构并安全合并实际引用的元素。
 - **安装版与绿色版**：均为 Windows x64 self-contained 构建，目标电脑无需另行安装 .NET Runtime。
 
 ## 安全与隐私
@@ -42,21 +43,20 @@
 1. 安装官方 64 位 IRIS ODBC 驱动，并按所在环境准备 DSN 或连接参数。
 2. 启动应用，在“连接设置”中配置连接并验证可用性。
 3. 在“元素配置”中建立本项目需要的业务元素。
-4. 在“SQL 规则”中添加参数化查询，设置输入元素和输出列映射。
-5. 使用测试参数验证规则，确认无误后点击“保存”。
+4. 在“SQL 查询对象”中配置公共 SELECT 和输出映射，再添加一个或多个参数化查询入口。
+5. 使用测试参数逐个验证查询入口，确认无误后点击“保存”。
 6. 返回“快捷查询”，输入任意可人工填写的元素并按 Enter 开始查询。
 
-### SQL 规则示例
+### SQL 查询对象示例
 
-以下示例使用虚构的表名和字段名。先创建 `id_card_no` 与 `registration_no` 两个元素，再配置规则：
+以下示例使用虚构的表名和字段名。先创建 `id_card_no` 与 `registration_no` 两个元素，再配置公共 SQL：
 
 ```sql
 SELECT REGISTRATION_NO
 FROM Demo.PatientRegistration
-WHERE ID_CARD_NO = {{id_card_no}}
 ```
 
-将结果列 `REGISTRATION_NO` 映射到元素 `registration_no`。运行时，`{{id_card_no}}` 会被编译为 ODBC 参数，不会直接进入 SQL 文本。
+将结果列 `REGISTRATION_NO` 映射到元素 `registration_no`，再添加“按身份证号”查询入口，筛选条件填写 `ID_CARD_NO = {{id_card_no}}`。以后增加按登记号、患者 ID 等入口时，不需要复制公共 SQL 和输出映射。运行时占位符会被编译为 ODBC 参数，不会直接进入 SQL 文本。
 
 ## 查询交互
 
@@ -77,13 +77,13 @@ WHERE ID_CARD_NO = {{id_card_no}}
 
 | 路径 | 内容 |
 | --- | --- |
-| `config.db` | 当前元素、SQL 规则、连接设置、加密密码、加密测试参数和界面设置 |
+| `config.db` | 当前元素、查询对象、查询入口、连接设置、加密密码、加密测试参数和界面设置 |
 | `Logs` | 不含参数值和结果值的执行元数据 |
 | `Backups` | 应用版本变化时生成的 SQLite 在线备份 |
 
 程序文件与用户数据相互分离。覆盖安装、升级或替换绿色版程序目录不会删除现有配置；检测到版本变化时，应用会先备份数据库再执行无损迁移。
 
-`.irisqconfig` 规则包不会包含服务器地址、用户名、密码、测试参数或患者数据。导入内容只进入当前编辑区，仍需确认并保存后才会生效。
+`.irisqconfig` 规则包会保留查询对象、查询入口、可执行规则和实际依赖的元素，但不会包含服务器地址、用户名、密码、测试参数或患者数据。导入内容只进入当前编辑区，仍需确认并保存后才会生效。
 
 ## 开发与构建
 
@@ -114,7 +114,7 @@ artifacts\publish\win-x64
 输出文件：
 
 ```text
-artifacts\installer\IrisQuickQuery-Setup-1.0.15-win-x64.exe
+artifacts\installer\IrisQuickQuery-Setup-1.0.16-win-x64.exe
 ```
 
 构建脚本会查找仓库内工具目录或系统安装的 Inno Setup 6/7。
@@ -128,7 +128,7 @@ artifacts\installer\IrisQuickQuery-Setup-1.0.15-win-x64.exe
 输出文件：
 
 ```text
-artifacts\portable\IrisQuickQuery-Portable-1.0.15-win-x64.zip
+artifacts\portable\IrisQuickQuery-Portable-1.0.16-win-x64.zip
 ```
 
 绿色版不包含 `config.db`、`Logs`、`Backups`、连接配置、密码或患者数据。它与安装版共用当前 Windows 用户的本地数据目录。
@@ -140,7 +140,7 @@ artifacts\portable\IrisQuickQuery-Portable-1.0.15-win-x64.zip
 ```text
 src/
 ├── IrisQuickQuery.App/             WPF 界面与应用启动
-├── IrisQuickQuery.Core/            领域模型、SQL 校验与规则调度
+├── IrisQuickQuery.Core/            查询对象编译、领域模型、SQL 校验与规则调度
 └── IrisQuickQuery.Infrastructure/  SQLite、DPAPI、ODBC 与日志实现
 
 tests/IrisQuickQuery.Core.Tests/    自动化测试

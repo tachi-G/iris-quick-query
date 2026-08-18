@@ -4,12 +4,11 @@
              xmlns:controls="clr-namespace:IrisQuickQuery.App.Controls">
     <Grid x:Name="RulesRoot" Margin="28,24,28,28" DataContext="{Binding Session}">
         <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
-
         <StackPanel>
             <Grid>
                 <StackPanel>
-                    <TextBlock Style="{StaticResource PageTitle}" Text="SQL 查询规则"/>
-                    <TextBlock Style="{StaticResource PageSubtitle}" Text="输入使用 {{element_key}}，输出列必须显式映射；启用前需用当前连接逐条测试。"/>
+                    <TextBlock Style="{StaticResource PageTitle}" Text="SQL 查询对象"/>
+                    <TextBlock Style="{StaticResource PageSubtitle}" Text="同一数据来源只配置一次公共查询和输出映射，再用多个查询入口描述不同筛选方式。"/>
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
                     <Button x:Name="ImportRulesButton" Style="{StaticResource SecondaryButton}" Content="导入规则包" Command="{Binding ImportRulesCommand}" Margin="0,0,8,0"/>
@@ -18,134 +17,107 @@
             </Grid>
             <Border Background="#FFF8DC" BorderBrush="#E6CB77" BorderThickness="1" CornerRadius="8" Padding="12,9" Margin="0,10,0,12">
                 <StackPanel>
-                    <TextBlock Text="配置流程：① 选择或新增规则　② 配置 SQL　③ 配置输出映射　④ 用当前连接测试规则" FontWeight="SemiBold"/>
-                    <TextBlock Text="测试用于确认 SQL、参数和输出列是否符合预期；配置检查通过后，点击保存即可立即用于后续查询。" Foreground="#725C19" Margin="0,3,0,0"/>
-                    <TextBlock Text="规则包包含 SQL 规则及其实际依赖的全局元素。导入会替换规则并安全合并元素；确认保存前不会正式生效，也不会改变服务器连接。" Foreground="#725C19" Margin="0,3,0,0"/>
+                    <TextBlock Text="配置流程：① 建立查询对象　② 编写公共 SELECT　③ 配置一次输出映射　④ 添加一个或多个查询入口　⑤ 测试入口" FontWeight="SemiBold"/>
+                    <TextBlock Text="基础 SQL 不写 WHERE；每个入口只填写自己的筛选条件。系统仍使用 ODBC 参数化执行，并保留冲突检测、列表选择和级联查询。" Foreground="#725C19" Margin="0,3,0,0"/>
+                    <TextBlock Text="规则包包含查询入口实际依赖的全局元素；导入先进入编辑区，确认保存前不会正式生效，也不会改变服务器连接。" Foreground="#725C19" Margin="0,3,0,0"/>
                 </StackPanel>
             </Border>
         </StackPanel>
-
         <Grid Grid.Row="1">
             <Grid.ColumnDefinitions><ColumnDefinition Width="270"/><ColumnDefinition Width="14"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
-
             <Border Style="{StaticResource Card}" Margin="0">
                 <DockPanel>
                     <Grid DockPanel.Dock="Top" Margin="0,0,0,10">
-                        <TextBlock Text="规则列表" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"/>
+                        <TextBlock Text="查询对象" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"/>
                         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                            <Button Style="{StaticResource SecondaryButton}" Content="新增规则" Command="{Binding AddRuleCommand}" Padding="10,5" FontSize="11" Margin="0,0,6,0"/>
-                            <Button Style="{StaticResource DangerButton}" Content="删除规则" Command="{Binding RemoveRuleCommand}" Padding="10,5" FontSize="11"/>
+                            <Button Style="{StaticResource SecondaryButton}" Content="新增" Command="{Binding AddQueryObjectCommand}" Padding="10,5" FontSize="11" Margin="0,0,6,0"/>
+                            <Button Style="{StaticResource DangerButton}" Content="删除" Command="{Binding RemoveQueryObjectCommand}" Padding="10,5" FontSize="11"/>
                         </StackPanel>
                     </Grid>
-                    <ListBox ItemsSource="{Binding Rules}" SelectedItem="{Binding SelectedRule}" BorderThickness="0">
+                    <ListBox ItemsSource="{Binding QueryObjects}" SelectedItem="{Binding SelectedQueryObject}" BorderThickness="0">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="3,7">
                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
-                                    <TextBlock Text="{Binding ResultMode}" Foreground="{StaticResource TextMutedBrush}" FontSize="10"/>
+                                    <TextBlock Foreground="{StaticResource TextMutedBrush}" FontSize="10"><Run Text="查询入口 "/><Run Text="{Binding Entries.Count,Mode=OneWay}"/><Run Text=" 个"/></TextBlock>
                                 </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>
                 </DockPanel>
             </Border>
-
             <ScrollViewer x:Name="RuleEditorScrollViewer" Grid.Column="2" VerticalScrollBarVisibility="Visible"
                           PanningMode="VerticalOnly" PreviewMouseWheel="RuleEditor_OnPreviewMouseWheel">
                 <ScrollViewer.Style>
                     <Style TargetType="ScrollViewer">
-                        <Setter Property="IsEnabled" Value="True"/>
-                        <Setter Property="Opacity" Value="1"/>
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding SelectedRule}" Value="{x:Null}">
-                                <Setter Property="IsEnabled" Value="False"/>
-                                <Setter Property="Opacity" Value="0.52"/>
-                            </DataTrigger>
-                        </Style.Triggers>
+                        <Setter Property="IsEnabled" Value="True"/><Setter Property="Opacity" Value="1"/>
+                        <Style.Triggers><DataTrigger Binding="{Binding SelectedQueryObject}" Value="{x:Null}"><Setter Property="IsEnabled" Value="False"/><Setter Property="Opacity" Value="0.52"/></DataTrigger></Style.Triggers>
                     </Style>
                 </ScrollViewer.Style>
                 <StackPanel>
                     <Border Style="{StaticResource Card}">
                         <Grid>
-                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="150"/><ColumnDefinition Width="110"/></Grid.ColumnDefinitions>
-                            <StackPanel Margin="0,0,12,0">
-                                <TextBlock Text="第 1 步：规则名称" Foreground="{StaticResource TextMutedBrush}"/>
-                                <TextBox Text="{Binding SelectedRule.Name,UpdateSourceTrigger=PropertyChanged}"/>
-                            </StackPanel>
-                            <StackPanel Grid.Column="1" Margin="0,0,12,0">
-                                <TextBlock Text="结果契约" Foreground="{StaticResource TextMutedBrush}"/>
-                                <ComboBox x:Name="ResultModeComboBox" ItemsSource="{Binding ResultModes}" SelectedItem="{Binding SelectedRule.ResultMode}"/>
-                            </StackPanel>
-                            <CheckBox Grid.Column="2" Content="启用规则" IsChecked="{Binding SelectedRule.IsEnabled}" VerticalAlignment="Center"/>
+                            <Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="130"/></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="第 1 步：查询对象名称" Foreground="{StaticResource TextMutedBrush}"/><TextBox Text="{Binding SelectedQueryObject.Name,UpdateSourceTrigger=PropertyChanged}"/></StackPanel>
+                            <CheckBox Grid.Column="1" Content="启用查询对象" IsChecked="{Binding SelectedQueryObject.IsEnabled}" VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
-
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="第 2 步：参数化 SQL" FontWeight="SemiBold" FontSize="15"/>
+                            <TextBlock Text="第 2 步：公共查询 SQL" FontWeight="SemiBold" FontSize="15"/>
                             <Border Background="#F5F8F8" BorderBrush="{StaticResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="10,7" Margin="0,8,0,5">
-                                <TextBlock x:Name="SqlExampleText" FontFamily="Consolas" FontSize="12" Foreground="#38545A"
-                                           Text="示例：SELECT REG_NO AS registration_no FROM PatientRegistration WHERE ID_CARD_NO = {{id_card_no}}"/>
+                                <TextBlock x:Name="SqlExampleText" FontFamily="Consolas" FontSize="12" Foreground="#38545A" Text="示例：SELECT PAPMI_RowId1, PAPMI_No, PAPMI_ID, PAPMI_Name FROM PA_PatMas"/>
                             </Border>
-                            <TextBlock Text="仅允许一条 SELECT/CTE；{{id_card_no}} 是输入元素，查询结果列或别名 registration_no 可映射到输出元素。占位符会按出现顺序转换为 ODBC ? 参数。"
-                                       Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"/>
-                            <controls:SqlEditor x:Name="RuleSqlEditor" Text="{Binding SelectedRule.SqlTemplate,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}"
-                                                TextValueChanged="SqlEditor_OnTextValueChanged" Height="230"/>
+                            <TextBlock Text="这里只配置公共 SELECT 和 FROM，不写入口专属 WHERE、ORDER BY 或 TOP 1；这些内容在第 4 步按入口配置。" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,10"/>
+                            <controls:SqlEditor x:Name="RuleSqlEditor" Text="{Binding SelectedQueryObject.BaseSqlTemplate,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" TextValueChanged="SqlEditor_OnTextValueChanged" Height="210"/>
                         </StackPanel>
                     </Border>
-
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <Grid Margin="0,0,0,10">
-                                <TextBlock Text="第 3 步：输出列映射" FontWeight="SemiBold" FontSize="15"/>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Style="{StaticResource SecondaryButton}" Content="增加映射" Command="{Binding AddMappingCommand}" Margin="0,0,8,0"/>
-                                    <Button Style="{StaticResource SecondaryButton}" Content="删除映射" Command="{Binding RemoveMappingCommand}"/>
-                                </StackPanel>
+                                <TextBlock Text="第 3 步：公共输出列映射" FontWeight="SemiBold" FontSize="15"/>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button Style="{StaticResource SecondaryButton}" Content="增加映射" Command="{Binding AddMappingCommand}" Margin="0,0,8,0"/><Button Style="{StaticResource SecondaryButton}" Content="删除映射" Command="{Binding RemoveMappingCommand}"/></StackPanel>
                             </Grid>
-                            <DataGrid x:Name="OutputMappingsGrid" ItemsSource="{Binding SelectedRuleMappings}" SelectedItem="{Binding SelectedMapping}"
-                                      AutoGenerateColumns="False" CanUserAddRows="False" Height="150" Width="520" HorizontalAlignment="Left"
-                                      ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <TextBlock Text="这里配置一次后，下面所有查询入口共同使用；不需要为身份证号、登记号、患者 ID 分别重复映射。" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,8"/>
+                            <DataGrid x:Name="OutputMappingsGrid" ItemsSource="{Binding SelectedObjectMappings}" SelectedItem="{Binding SelectedMapping}" AutoGenerateColumns="False" CanUserAddRows="False" Height="150" Width="520" HorizontalAlignment="Left" ScrollViewer.VerticalScrollBarVisibility="Auto">
                                 <DataGrid.Columns>
-                                    <DataGridTemplateColumn Header="结果列名" Width="250">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ComboBox SelectedItem="{Binding ColumnName,Mode=OneWay}"
-                                                          Loaded="ResultColumnComboBox_OnLoaded" DropDownOpened="ResultColumnComboBox_OnDropDownOpened"
-                                                          SelectionChanged="ResultColumnComboBox_OnSelectionChanged"
-                                                          MinHeight="30" Margin="3"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
-                                    <DataGridTemplateColumn Header="写入元素" Width="250">
-                                        <DataGridTemplateColumn.CellTemplate>
-                                            <DataTemplate>
-                                                <ComboBox SelectedValue="{Binding ElementKey,Mode=OneWay}"
-                                                          SelectedValuePath="Key" DisplayMemberPath="Label"
-                                                          Loaded="OutputElementComboBox_OnLoaded" DropDownOpened="OutputElementComboBox_OnDropDownOpened"
-                                                          SelectionChanged="OutputElementComboBox_OnSelectionChanged"
-                                                          MinHeight="30" Margin="3"/>
-                                            </DataTemplate>
-                                        </DataGridTemplateColumn.CellTemplate>
-                                    </DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="结果列名" Width="250"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox SelectedItem="{Binding ColumnName,Mode=OneWay}" Loaded="ResultColumnComboBox_OnLoaded" DropDownOpened="ResultColumnComboBox_OnDropDownOpened" SelectionChanged="ResultColumnComboBox_OnSelectionChanged" MinHeight="30" Margin="3"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
+                                    <DataGridTemplateColumn Header="写入元素" Width="250"><DataGridTemplateColumn.CellTemplate><DataTemplate><ComboBox SelectedValue="{Binding ElementKey,Mode=OneWay}" SelectedValuePath="Key" DisplayMemberPath="Label" Loaded="OutputElementComboBox_OnLoaded" DropDownOpened="OutputElementComboBox_OnDropDownOpened" SelectionChanged="OutputElementComboBox_OnSelectionChanged" MinHeight="30" Margin="3"/></DataTemplate></DataGridTemplateColumn.CellTemplate></DataGridTemplateColumn>
                                 </DataGrid.Columns>
                             </DataGrid>
                         </StackPanel>
                     </Border>
-
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <Grid Margin="0,0,0,10">
+                                <StackPanel><TextBlock Text="第 4 步：查询入口" FontWeight="SemiBold" FontSize="15"/><TextBlock Text="筛选条件示例：PAPMI_ID = {{id_card_no}}；排序只填 ID DESC。" Foreground="{StaticResource TextMutedBrush}" Margin="0,3,0,0"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top"><Button Style="{StaticResource SecondaryButton}" Content="增加入口" Command="{Binding AddQueryEntryCommand}" Margin="0,0,8,0"/><Button Style="{StaticResource SecondaryButton}" Content="删除入口" Command="{Binding RemoveQueryEntryCommand}"/></StackPanel>
+                            </Grid>
+                            <DataGrid x:Name="QueryEntriesGrid" ItemsSource="{Binding SelectedQueryObject.Entries}" SelectedItem="{Binding SelectedQueryEntry}" AutoGenerateColumns="False" CanUserAddRows="False" Height="220" ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <DataGrid.Columns>
+                                    <DataGridTextColumn Header="入口名称" Binding="{Binding Name,UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                                    <DataGridTextColumn Header="筛选条件（不写 WHERE）" Binding="{Binding FilterTemplate,UpdateSourceTrigger=PropertyChanged}" Width="*"/>
+                                    <DataGridComboBoxColumn x:Name="EntryResultModeColumn" Header="结果" SelectedItemBinding="{Binding ResultMode}" Width="90"/>
+                                    <DataGridCheckBoxColumn Header="TOP 1" Binding="{Binding TakeFirst,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Width="70"/>
+                                    <DataGridTextColumn Header="排序（不写 ORDER BY）" Binding="{Binding OrderByTemplate,UpdateSourceTrigger=PropertyChanged}" Width="150"/>
+                                    <DataGridCheckBoxColumn Header="启用" Binding="{Binding IsEnabled,Mode=TwoWay,UpdateSourceTrigger=PropertyChanged}" Width="60"/>
+                                </DataGrid.Columns>
+                            </DataGrid>
+                            <Expander Header="高级：当前入口使用完整 SQL（一般无需设置）" Margin="0,10,0,0">
+                                <StackPanel Margin="0,8,0,0">
+                                    <TextBlock Text="旧版复杂 SQL 无法安全拆分时会保留在这里；有内容时将覆盖公共 SQL、筛选条件、TOP 1 和排序。清空后恢复组合模式。" Foreground="{StaticResource TextMutedBrush}" TextWrapping="Wrap" Margin="0,0,0,6"/>
+                                    <TextBox Text="{Binding SelectedQueryEntry.SqlTemplateOverride,UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" FontFamily="Consolas" Height="110" VerticalScrollBarVisibility="Auto"/>
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                    </Border>
                     <Border x:Name="RuleTestSection" Style="{StaticResource Card}" Background="#FFF8DC" BorderBrush="#E6CB77">
                         <StackPanel>
                             <Grid>
-                                <StackPanel>
-                                    <TextBlock Text="第 4 步：用当前连接测试此规则" FontWeight="SemiBold" FontSize="16"/>
-                                    <TextBlock Text="{Binding SelectedRuleTestStatus}" Foreground="#725C19" FontWeight="SemiBold" Margin="0,3,0,0"/>
-                                </StackPanel>
-                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                                    <Button Style="{StaticResource SecondaryButton}" Content="根据 SQL 生成参数" Command="{Binding RefreshTestValuesCommand}" Margin="0,0,8,0"/>
-                                    <Button Content="测试当前规则" Command="{Binding TestRuleCommand}"/>
-                                </StackPanel>
+                                <StackPanel><TextBlock Text="第 5 步：用当前连接测试所选入口" FontWeight="SemiBold" FontSize="16"/><TextBlock Text="{Binding SelectedRuleTestStatus}" Foreground="#725C19" FontWeight="SemiBold" Margin="0,3,0,0"/></StackPanel>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center"><Button Style="{StaticResource SecondaryButton}" Content="生成入口参数" Command="{Binding RefreshTestValuesCommand}" Margin="0,0,8,0"/><Button Content="测试当前入口" Command="{Binding TestRuleCommand}"/></StackPanel>
                             </Grid>
-                            <TextBlock Text="先点击“根据 SQL 生成参数”，再在每个等号后填写真实测试值。参数会按规则使用当前 Windows 用户 DPAPI 加密自动保存；测试结果不会保存。测试最多预览 50 行。" Foreground="#725C19" Margin="0,8,0,8" TextWrapping="Wrap"/>
+                            <TextBlock Text="测试参数按入口运行 ID 使用当前 Windows 用户 DPAPI 加密自动保存；测试结果不会保存，最多预览 50 行。" Foreground="#725C19" Margin="0,8,0,8" TextWrapping="Wrap"/>
                             <TextBox Text="{Binding TestValues,UpdateSourceTrigger=PropertyChanged}" AcceptsReturn="True" FontFamily="Consolas" Height="70" VerticalScrollBarVisibility="Auto"/>
                             <DataGrid ItemsSource="{Binding TestPreview}" IsReadOnly="True" Height="160" Margin="0,10,0,0"/>
                         </StackPanel>
@@ -153,12 +125,9 @@
                 </StackPanel>
             </ScrollViewer>
         </Grid>
-
         <Grid Grid.Row="2" Margin="0,12,0,0">
             <TextBlock Text="{Binding StatusMessage}" Foreground="{StaticResource TextMutedBrush}" VerticalAlignment="Center" MaxWidth="760"/>
-            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="SaveRulesButton" Content="保存" Command="{Binding SaveCommand}"/>
-            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"><Button x:Name="SaveRulesButton" Content="保存" Command="{Binding SaveCommand}" Click="SaveRulesButton_OnClick"/></StackPanel>
         </Grid>
     </Grid>
 </UserControl>

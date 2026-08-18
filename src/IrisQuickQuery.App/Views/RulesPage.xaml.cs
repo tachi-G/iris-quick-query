@@ -9,7 +9,11 @@ namespace IrisQuickQuery.App.Views;
 public partial class RulesPage : UserControl
 {
     private bool _refreshingMappingOptions;
-    public RulesPage() => InitializeComponent();
+    public RulesPage()
+    {
+        InitializeComponent();
+        EntryResultModeColumn.ItemsSource = Enum.GetValues<RuleResultMode>();
+    }
     private DraftConfigurationViewModel? ViewModel => RulesRoot.DataContext as DraftConfigurationViewModel;
 
     private void RuleEditor_OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
@@ -60,5 +64,13 @@ public partial class RulesPage : UserControl
     {
         if (_refreshingMappingOptions || sender is not ComboBox { DataContext: OutputMapping mapping, SelectedValue: string key }) return;
         mapping.ElementKey = key;
+    }
+
+    private void SaveRulesButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OutputMappingsGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        OutputMappingsGrid.CommitEdit(DataGridEditingUnit.Row, true);
+        QueryEntriesGrid.CommitEdit(DataGridEditingUnit.Cell, true);
+        QueryEntriesGrid.CommitEdit(DataGridEditingUnit.Row, true);
     }
 }
