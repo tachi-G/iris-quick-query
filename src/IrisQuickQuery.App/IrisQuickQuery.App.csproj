@@ -9,7 +9,7 @@
     <ApplicationIcon>Assets\iris-app-icon.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>1.0.15</Version>
+    <Version>1.0.16</Version>
     <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>

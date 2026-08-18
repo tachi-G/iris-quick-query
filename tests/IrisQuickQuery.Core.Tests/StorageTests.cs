@@ -56,16 +56,62 @@ public sealed class StorageTests : IDisposable
         Assert.True(imported.IncludesElements);
         Assert.Single(imported.Rules);
         Assert.NotEqual(source.Id, imported.Rules.Single().Id);
-        Assert.Equal(source.SqlTemplate, imported.Rules.Single().SqlTemplate);
+        Assert.Equal(SqlTemplateCompiler.Compile(source.SqlTemplate).CommandText.Replace("\r", string.Empty).Replace("\n", " ").Replace("  ", " "),
+            SqlTemplateCompiler.Compile(imported.Rules.Single().SqlTemplate).CommandText.Replace("\r", string.Empty).Replace("\n", " ").Replace("  ", " "));
+        Assert.Single(imported.QueryObjects);
         Assert.Equal(["patient_id", "visit_no"], imported.Elements.Select(x => x.Key).Order());
         Assert.Equal(patientId.Id, imported.Elements.Single(x => x.Key == "patient_id").Id);
         Assert.True(imported.Elements.Single(x => x.Key == "patient_id").IsSensitive);
         Assert.False(imported.Elements.Single(x => x.Key == "visit_no").CanInput);
         using var archive = System.IO.Compression.ZipFile.OpenRead(path);
         Assert.Contains(archive.Entries, x => x.FullName == "rules.json");
+        Assert.Contains(archive.Entries, x => x.FullName == "query-objects.json");
         Assert.Contains(archive.Entries, x => x.FullName == "elements.json");
         Assert.Contains(archive.Entries, x => x.FullName == "manifest.json");
         Assert.DoesNotContain(archive.Entries, x => x.FullName == "config.json");
+    }
+
+    [Fact]
+    public async Task QueryObjectPackage_PreservesSharedSqlEntrySettingsAndObjectNames()
+    {
+        Directory.CreateDirectory(_temp);
+        var service = new ConfigurationPackageService();
+        var patientId = new ElementDefinition { Key = "patient_id", Label = "患者编号" };
+        var visitNo = new ElementDefinition { Key = "visit_no", Label = "就诊号" };
+        var queryObject = new QueryObjectDefinition
+        {
+            Name = "患者就诊关系",
+            BaseSqlTemplate = "SELECT visit_no, patient_id FROM visits",
+            OutputMappings =
+            [
+                new OutputMapping { ColumnName = "visit_no", ElementKey = "visit_no" },
+                new OutputMapping { ColumnName = "patient_id", ElementKey = "patient_id" }
+            ],
+            Entries =
+            [
+                new QueryEntryDefinition
+                {
+                    Name = "按患者取最近就诊",
+                    FilterTemplate = "patient_id={{patient_id}}",
+                    OrderByTemplate = "created_at DESC",
+                    TakeFirst = true
+                }
+            ]
+        };
+        var path = Path.Combine(_temp, "objects.irisqconfig");
+
+        await service.ExportQueryObjectsAsync([queryObject], [patientId, visitNo], path);
+        var imported = await service.ImportRulesAsync(path);
+
+        var importedObject = Assert.Single(imported.QueryObjects);
+        var importedEntry = Assert.Single(importedObject.Entries);
+        Assert.Equal("患者就诊关系", importedObject.Name);
+        Assert.Equal(queryObject.BaseSqlTemplate, importedObject.BaseSqlTemplate);
+        Assert.Equal("按患者取最近就诊", importedEntry.Name);
+        Assert.Equal("patient_id={{patient_id}}", importedEntry.FilterTemplate);
+        Assert.Equal("created_at DESC", importedEntry.OrderByTemplate);
+        Assert.True(importedEntry.TakeFirst);
+        Assert.Contains("SELECT TOP 1", Assert.Single(imported.Rules).SqlTemplate, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -128,6 +174,61 @@ public sealed class StorageTests : IDisposable
         Assert.Single(imported.Rules);
         Assert.Equal(source.SqlTemplate, imported.Rules.Single().SqlTemplate);
         Assert.NotEqual(source.Id, imported.Rules.Single().Id);
+    }
+
+    [Fact]
+    public async Task RulePackage_StillImportsVersion3RulesAndElements()
+    {
+        Directory.CreateDirectory(_temp);
+        var path = Path.Combine(_temp, "version3.irisqconfig");
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web) { WriteIndented = true };
+        var source = new QueryRuleDefinition
+        {
+            Name = "旧版带元素规则",
+            SqlTemplate = "SELECT visit_no FROM visits WHERE patient_id={{patient_id}}",
+            OutputMappings = [new() { ColumnName = "visit_no", ElementKey = "visit_no" }]
+        };
+        var elements = new[]
+        {
+            new ElementDefinition { Key = "patient_id", Label = "患者编号" },
+            new ElementDefinition { Key = "visit_no", Label = "就诊号" }
+        };
+        var ruleBytes = JsonSerializer.SerializeToUtf8Bytes(new[] { source }, options);
+        var elementBytes = JsonSerializer.SerializeToUtf8Bytes(elements, options);
+        var manifestBytes = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            formatVersion = 3,
+            ruleSchemaVersion = 1,
+            createdAt = DateTimeOffset.UtcNow,
+            minAppVersion = "1.0.15",
+            ruleCount = 1,
+            elementCount = 2,
+            contentType = "iris-query-rules-with-elements",
+            rulesSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(ruleBytes)),
+            elementsSha256 = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(elementBytes))
+        }, options);
+        await using (var stream = File.Create(path))
+        using (var archive = new System.IO.Compression.ZipArchive(stream, System.IO.Compression.ZipArchiveMode.Create))
+        {
+            foreach (var content in new[]
+                     {
+                         (Name: "rules.json", Bytes: ruleBytes),
+                         (Name: "elements.json", Bytes: elementBytes),
+                         (Name: "manifest.json", Bytes: manifestBytes)
+                     })
+            {
+                var entry = archive.CreateEntry(content.Name);
+                await using var target = entry.Open();
+                await target.WriteAsync(content.Bytes);
+            }
+        }
+
+        var imported = await new ConfigurationPackageService().ImportRulesAsync(path);
+
+        Assert.True(imported.IncludesElements);
+        Assert.Empty(imported.QueryObjects);
+        Assert.Single(imported.Rules);
+        Assert.Equal(2, imported.Elements.Count);
     }
 
     [Fact]
@@ -403,7 +504,7 @@ public sealed class StorageTests : IDisposable
         Assert.Contains("{{IDCardNumber}}", saved.Rules.Single().SqlTemplate);
         Assert.DoesNotContain("{{IDCard}}", saved.Rules.Single().SqlTemplate);
         Assert.Contains(saved.Rules.Single().OutputMappings, x => x.ElementKey == "visit_no");
-        Assert.Contains("已同步 1 条 SQL 规则", viewModel.StatusMessage);
+        Assert.Contains("已同步 1 个查询对象", viewModel.StatusMessage);
         Assert.DoesNotContain("待测试", viewModel.StatusMessage);
     }
 
@@ -441,6 +542,31 @@ public sealed class StorageTests : IDisposable
         Assert.Equal(existing.Id, current.Id);
         Assert.Equal(2, current.Elements.Count);
         Assert.Single(current.Rules);
+        Assert.Single(current.QueryObjects);
+        Assert.NotEmpty(Directory.GetFiles(paths.BackupDirectory, "config-*.db"));
+    }
+
+    [Fact]
+    public async Task ConfigurationBootstrapper_GroupsCompatibleLegacyRulesAndPreservesRuntimeIds()
+    {
+        var paths = new AppDataPaths(_temp);
+        var repository = new SqliteConfigurationRepository(paths);
+        await repository.InitializeAsync();
+        var existing = TestConfig.CreateElements("patient_id", "registration_no", "patient_name");
+        var first = TestConfig.Rule("按患者号查登记号", "patient_id", "registration_no");
+        var second = TestConfig.Rule("按患者号查姓名", "patient_id", "patient_name");
+        existing.Rules.AddRange([first, second]);
+        await repository.SaveCurrentAsync(existing);
+        await repository.SetSettingAsync("app.lastVersion", "1.0.15");
+
+        await ConfigurationBootstrapper.PrepareAsync(repository,
+            new ConfigurationSnapshot { Name = "空白配置" }, "1.0.16");
+
+        var current = Assert.IsType<ConfigurationSnapshot>(await repository.GetCurrentAsync());
+        var queryObject = Assert.Single(current.QueryObjects);
+        Assert.Equal(2, queryObject.Entries.Count);
+        Assert.Equal(2, current.Rules.Count);
+        Assert.Equal(new[] { first.Id, second.Id }.Order(), current.Rules.Select(x => x.Id).Order());
         Assert.NotEmpty(Directory.GetFiles(paths.BackupDirectory, "config-*.db"));
     }
 
@@ -593,7 +719,7 @@ public sealed class StorageTests : IDisposable
 
         viewModel.AddMappingCommand.Execute(null);
 
-        var mappings = viewModel.SelectedRule!.OutputMappings;
+        var mappings = viewModel.SelectedQueryObject!.OutputMappings;
         var added = mappings.Last();
         Assert.Equal("patient_name", added.ColumnName);
         Assert.Equal("patient_name", added.ElementKey);
@@ -601,7 +727,7 @@ public sealed class StorageTests : IDisposable
         Assert.Contains(viewModel.GetAvailableOutputElements(added), x => x.Key == "patient_name");
         Assert.Equal(["registration_no", "patient_name", "visit_number"], viewModel.SelectedRuleResultColumns);
 
-        viewModel.SelectedRule.SqlTemplate = "SELECT * FROM Patient";
+        viewModel.SelectedQueryObject.BaseSqlTemplate = "SELECT * FROM Patient";
         viewModel.RefreshSelectedRuleResultColumns();
         Assert.Contains("registration_no", viewModel.SelectedRuleResultColumns);
     }

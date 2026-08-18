@@ -46,4 +46,43 @@ public static class ElementKeySynchronizer
         }
         return updatedRules;
     }
+
+    public static int Apply(IEnumerable<QueryObjectDefinition> queryObjects, IEnumerable<ElementKeyChange> changes)
+    {
+        var renameMap = changes
+            .Where(x => !string.IsNullOrWhiteSpace(x.OldKey) && !string.IsNullOrWhiteSpace(x.NewKey))
+            .ToDictionary(x => x.OldKey, x => x.NewKey, StringComparer.OrdinalIgnoreCase);
+        if (renameMap.Count == 0) return 0;
+
+        var updatedObjects = 0;
+        foreach (var queryObject in queryObjects)
+        {
+            var changed = false;
+            var updatedBase = SqlTemplateCompiler.RenameElementKeys(queryObject.BaseSqlTemplate ?? string.Empty, renameMap);
+            if (!string.Equals(updatedBase, queryObject.BaseSqlTemplate, StringComparison.Ordinal))
+            {
+                queryObject.BaseSqlTemplate = updatedBase;
+                changed = true;
+            }
+            foreach (var entry in queryObject.Entries)
+            {
+                var updatedFilter = SqlTemplateCompiler.RenameElementKeys(entry.FilterTemplate ?? string.Empty, renameMap);
+                var updatedOrder = SqlTemplateCompiler.RenameElementKeys(entry.OrderByTemplate ?? string.Empty, renameMap);
+                var updatedOverride = string.IsNullOrWhiteSpace(entry.SqlTemplateOverride)
+                    ? entry.SqlTemplateOverride
+                    : SqlTemplateCompiler.RenameElementKeys(entry.SqlTemplateOverride, renameMap);
+                if (!string.Equals(updatedFilter, entry.FilterTemplate, StringComparison.Ordinal)) { entry.FilterTemplate = updatedFilter; changed = true; }
+                if (!string.Equals(updatedOrder, entry.OrderByTemplate, StringComparison.Ordinal)) { entry.OrderByTemplate = updatedOrder; changed = true; }
+                if (!string.Equals(updatedOverride, entry.SqlTemplateOverride, StringComparison.Ordinal)) { entry.SqlTemplateOverride = updatedOverride; changed = true; }
+            }
+            foreach (var mapping in queryObject.OutputMappings)
+            {
+                if (!renameMap.TryGetValue(mapping.ElementKey ?? string.Empty, out var replacement)) continue;
+                mapping.ElementKey = replacement;
+                changed = true;
+            }
+            if (changed) updatedObjects++;
+        }
+        return updatedObjects;
+    }
 }

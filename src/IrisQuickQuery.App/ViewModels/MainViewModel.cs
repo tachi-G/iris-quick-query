@@ -38,7 +38,7 @@ public sealed class MainViewModel : ObservableObject
         {
             case "query": await Query.LoadAsync(); CurrentPage = Query; CurrentTitle = "快捷查询"; CurrentSection = page; break;
             case "elements": CurrentPage = new ElementConfigurationPageViewModel(Configuration); CurrentTitle = "元素配置"; CurrentSection = page; break;
-            case "rules": CurrentPage = new RuleConfigurationPageViewModel(Configuration); CurrentTitle = "SQL 规则"; CurrentSection = page; break;
+            case "rules": CurrentPage = new RuleConfigurationPageViewModel(Configuration); CurrentTitle = "SQL 查询对象"; CurrentSection = page; break;
             case "connection": await Connection.LoadAsync(); CurrentPage = Connection; CurrentTitle = "连接设置"; CurrentSection = page; break;
             case "about": CurrentPage = About; CurrentTitle = "关于"; CurrentSection = page; break;
         }

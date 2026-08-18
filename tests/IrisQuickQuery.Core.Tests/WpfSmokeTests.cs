@@ -89,7 +89,7 @@ public sealed class WpfSmokeTests
                 var outputGrid = Assert.IsType<DataGrid>(rulesPage.FindName("OutputMappingsGrid"));
                 Assert.NotNull(rulesPage.FindName("RuleSqlEditor"));
                 var sqlExample = Assert.IsType<TextBlock>(rulesPage.FindName("SqlExampleText"));
-                var resultModeCombo = Assert.IsType<ComboBox>(rulesPage.FindName("ResultModeComboBox"));
+                var entriesGrid = Assert.IsType<DataGrid>(rulesPage.FindName("QueryEntriesGrid"));
                 Assert.NotEmpty(ruleEditor.Style.Triggers);
                 Assert.All(outputGrid.Columns, column => Assert.IsType<DataGridTemplateColumn>(column));
                 Assert.Equal(520, outputGrid.Width);
@@ -100,15 +100,15 @@ public sealed class WpfSmokeTests
                     BindingOperations.GetBinding(resultCombo, Selector.SelectedItemProperty)!.Mode);
                 Assert.Equal(BindingMode.OneWay,
                     BindingOperations.GetBinding(elementCombo, Selector.SelectedValueProperty)!.Mode);
-                Assert.Contains("{{id_card_no}}", sqlExample.Text);
+                Assert.Contains("PA_PatMas", sqlExample.Text);
                 Assert.Null(rulesPage.FindName("LocateRuleTestButton"));
                 Assert.Equal(ScrollBarVisibility.Visible, ruleEditor.VerticalScrollBarVisibility);
                 Assert.IsType<Button>(rulesPage.FindName("ImportRulesButton"));
                 Assert.IsType<Button>(rulesPage.FindName("ExportRulesButton"));
                 Assert.IsType<Border>(rulesPage.FindName("RuleTestSection"));
-                Assert.Equal(driverCombo.Height, resultModeCombo.Height);
-                Assert.Equal(driverCombo.Padding, resultModeCombo.Padding);
-                Assert.Equal(driverCombo.VerticalContentAlignment, resultModeCombo.VerticalContentAlignment);
+                Assert.Equal("入口名称", entriesGrid.Columns[0].Header);
+                Assert.Equal("筛选条件（不写 WHERE）", entriesGrid.Columns[1].Header);
+                Assert.NotEmpty(Assert.IsType<DataGridComboBoxColumn>(entriesGrid.Columns[2]).ItemsSource);
 
                 var mappingTestDirectory = Path.Combine(Path.GetTempPath(), "IrisQuickQueryWpfTests", Guid.NewGuid().ToString("N"));
                 var mappingPaths = new AppDataPaths(mappingTestDirectory);
@@ -122,14 +122,15 @@ public sealed class WpfSmokeTests
                 var mappingViewModel = new DraftConfigurationViewModel(mappingServices);
                 mappingViewModel.Elements.Add(new ElementDefinition { Key = "registration_no", Label = "登记号" });
                 mappingViewModel.Elements.Add(new ElementDefinition { Key = "patient_name", Label = "患者姓名" });
-                var mappingRule = new QueryRuleDefinition
+                var mappingObject = new QueryObjectDefinition
                 {
                     Name = "映射显示测试",
-                    SqlTemplate = "SELECT REG_NO AS registration_no, NAME AS patient_name FROM Patient",
-                    OutputMappings = [new OutputMapping { ColumnName = "registration_no", ElementKey = "registration_no" }]
+                    BaseSqlTemplate = "SELECT REG_NO AS registration_no, NAME AS patient_name FROM Patient",
+                    OutputMappings = [new OutputMapping { ColumnName = "registration_no", ElementKey = "registration_no" }],
+                    Entries = [new QueryEntryDefinition { Name = "按登记号", FilterTemplate = "REG_NO={{registration_no}}" }]
                 };
-                mappingViewModel.Rules.Add(mappingRule);
-                mappingViewModel.SelectedRule = mappingRule;
+                mappingViewModel.QueryObjects.Add(mappingObject);
+                mappingViewModel.SelectedQueryObject = mappingObject;
                 rulesPage.DataContext = new RuleConfigurationPageViewModel(mappingViewModel);
                 rulesPage.Measure(new Size(1180, 900));
                 rulesPage.Arrange(new Rect(0, 0, 1180, 900));

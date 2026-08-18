@@ -51,13 +51,42 @@ public sealed class QueryRuleDefinition
     public int MaxRows { get; set; } = 500;
 }
 
+public sealed class QueryEntryDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid RuntimeRuleId { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public string FilterTemplate { get; set; } = string.Empty;
+    public string OrderByTemplate { get; set; } = string.Empty;
+    public string? SqlTemplateOverride { get; set; }
+    public bool TakeFirst { get; set; }
+    public bool IsEnabled { get; set; } = true;
+    public RuleResultMode ResultMode { get; set; } = RuleResultMode.Scalar;
+    public int DisplayOrder { get; set; }
+    public int TimeoutSeconds { get; set; } = 15;
+    public int MaxRows { get; set; } = 500;
+}
+
+public sealed class QueryObjectDefinition
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public string BaseSqlTemplate { get; set; } = string.Empty;
+    public bool IsEnabled { get; set; } = true;
+    public int DisplayOrder { get; set; }
+    public List<OutputMapping> OutputMappings { get; set; } = [];
+    public List<QueryEntryDefinition> Entries { get; set; } = [];
+}
+
 public sealed class ConfigurationSnapshot
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public Guid Id { get; set; } = Guid.NewGuid();
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public string Name { get; set; } = "默认配置";
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public List<ElementDefinition> Elements { get; set; } = [];
+    public List<QueryObjectDefinition> QueryObjects { get; set; } = [];
+    // Rules are the executable, backward-compatible representation generated from QueryObjects.
     public List<QueryRuleDefinition> Rules { get; set; } = [];
 }

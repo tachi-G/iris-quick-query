@@ -20,6 +20,8 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     private readonly RuleTestValueStore _ruleTestValueStore;
     private ConfigurationSnapshot? _source;
     private ElementDefinition? _selectedElement;
+    private QueryObjectDefinition? _selectedQueryObject;
+    private QueryEntryDefinition? _selectedQueryEntry;
     private QueryRuleDefinition? _selectedRule;
     private OutputMapping? _selectedMapping;
     private string _name = string.Empty;
@@ -32,6 +34,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     private bool _suppressTestValuePersistence;
 
     public ObservableCollection<ElementDefinition> Elements { get; } = [];
+    public ObservableCollection<QueryObjectDefinition> QueryObjects { get; } = [];
     public ObservableCollection<QueryRuleDefinition> Rules { get; } = [];
     public ObservableCollection<string> SelectedRuleResultColumns { get; } = [];
     public Array ElementTypes => Enum.GetValues(typeof(ElementDataType));
@@ -81,6 +84,31 @@ public sealed class DraftConfigurationViewModel : ObservableObject
             RefreshTestValuesCommand?.RaiseCanExecuteChanged();
         }
     }
+    public QueryObjectDefinition? SelectedQueryObject
+    {
+        get => _selectedQueryObject;
+        set
+        {
+            if (!Set(ref _selectedQueryObject, value)) return;
+            SelectedMapping = null;
+            Raise(nameof(SelectedObjectMappings));
+            SelectedQueryEntry = value?.Entries.OrderBy(x => x.DisplayOrder).FirstOrDefault();
+            RefreshSelectedRuleResultColumns();
+            RemoveQueryObjectCommand?.RaiseCanExecuteChanged();
+            AddQueryEntryCommand?.RaiseCanExecuteChanged();
+            AddMappingCommand?.RaiseCanExecuteChanged();
+        }
+    }
+    public QueryEntryDefinition? SelectedQueryEntry
+    {
+        get => _selectedQueryEntry;
+        set
+        {
+            if (!Set(ref _selectedQueryEntry, value)) return;
+            SelectedRule = BuildSelectedEntryRule();
+            RemoveQueryEntryCommand?.RaiseCanExecuteChanged();
+        }
+    }
     public OutputMapping? SelectedMapping
     {
         get => _selectedMapping;
@@ -91,11 +119,18 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         }
     }
     public ListCollectionView? SelectedRuleMappings => SelectedRule is null ? null : (ListCollectionView)CollectionViewSource.GetDefaultView(SelectedRule.OutputMappings);
+    public ListCollectionView? SelectedObjectMappings => SelectedQueryObject is null
+        ? null
+        : (ListCollectionView)CollectionViewSource.GetDefaultView(SelectedQueryObject.OutputMappings);
 
     public RelayCommand AddElementCommand { get; }
     public RelayCommand RemoveElementCommand { get; }
     public RelayCommand AddRuleCommand { get; }
     public RelayCommand RemoveRuleCommand { get; }
+    public RelayCommand AddQueryObjectCommand { get; }
+    public RelayCommand RemoveQueryObjectCommand { get; }
+    public RelayCommand AddQueryEntryCommand { get; }
+    public RelayCommand RemoveQueryEntryCommand { get; }
     public RelayCommand AddMappingCommand { get; }
     public RelayCommand RemoveMappingCommand { get; }
     public AsyncRelayCommand SaveCommand { get; }
@@ -112,8 +147,12 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         RemoveElementCommand = new RelayCommand(RemoveElement, () => SelectedElement is not null);
         AddRuleCommand = new RelayCommand(AddRule);
         RemoveRuleCommand = new RelayCommand(RemoveRule, () => SelectedRule is not null);
-        AddMappingCommand = new RelayCommand(AddMapping, () => SelectedRule is not null);
-        RemoveMappingCommand = new RelayCommand(RemoveMapping, () => SelectedRule is not null && SelectedMapping is not null);
+        AddQueryObjectCommand = new RelayCommand(AddQueryObject);
+        RemoveQueryObjectCommand = new RelayCommand(RemoveQueryObject, () => SelectedQueryObject is not null);
+        AddQueryEntryCommand = new RelayCommand(AddQueryEntry, () => SelectedQueryObject is not null);
+        RemoveQueryEntryCommand = new RelayCommand(RemoveQueryEntry, () => SelectedQueryObject is not null && SelectedQueryEntry is not null);
+        AddMappingCommand = new RelayCommand(AddMapping, () => SelectedQueryObject is not null || SelectedRule is not null);
+        RemoveMappingCommand = new RelayCommand(RemoveMapping, () => (SelectedQueryObject is not null || SelectedRule is not null) && SelectedMapping is not null);
         SaveCommand = new AsyncRelayCommand(SaveAsync);
         TestRuleCommand = new AsyncRelayCommand(TestSelectedRuleAsync, () => SelectedRule is not null);
         RefreshTestValuesCommand = new RelayCommand(RefreshTestTemplate, () => SelectedRule is not null);
@@ -127,21 +166,33 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         _source = Clone(current);
         Name = current.Name;
         Elements.Clear(); foreach (var item in current.Elements) Elements.Add(Clone(item));
-        Rules.Clear(); foreach (var item in current.Rules) Rules.Add(Clone(item));
+        var objects = current.QueryObjects.Count > 0
+            ? current.QueryObjects
+            : QueryObjectCompiler.MigrateRules(current.Rules).QueryObjects;
+        QueryObjects.Clear(); foreach (var item in objects) QueryObjects.Add(Clone(item));
+        RefreshExecutableRules();
         _liveValidatedRules.Clear();
-        SelectedElement = Elements.FirstOrDefault(); SelectedRule = Rules.FirstOrDefault();
+        SelectedElement = Elements.FirstOrDefault();
+        SelectedQueryObject = QueryObjects.OrderBy(x => x.DisplayOrder).FirstOrDefault();
+        if (SelectedQueryObject is null) SelectedRule = Rules.FirstOrDefault();
         RefreshSelectedRuleTestStatus();
-        StatusMessage = "已加载当前配置。";
+        StatusMessage = current.QueryObjects.Count == 0 && current.Rules.Count > 0
+            ? $"已把 {current.Rules.Count} 条旧规则整理为 {QueryObjects.Count} 个查询对象；点击保存后写入新结构。"
+            : "已加载当前配置。";
     }
 
     public ConfigurationSnapshot BuildSnapshot()
     {
+        var queryObjects = QueryObjects.Select(Clone).ToList();
         var snapshot = new ConfigurationSnapshot
         {
             Id = _source?.Id ?? Guid.NewGuid(),
             Name = string.IsNullOrWhiteSpace(Name) ? "未命名配置" : Name.Trim(),
             Elements = Elements.Select(Clone).ToList(),
-            Rules = Rules.Select(Clone).ToList()
+            QueryObjects = queryObjects,
+            Rules = queryObjects.Count == 0
+                ? Rules.Select(Clone).ToList()
+                : QueryObjectCompiler.Compile(queryObjects).Select(Clone).ToList()
         };
         return snapshot;
     }
@@ -158,6 +209,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     {
         if (SelectedElement is null) return;
         var key = SelectedElement.Key;
+        RefreshExecutableRules();
         if (Rules.Any(x => (x.SqlTemplate ?? string.Empty).Contains("{{" + key + "}}", StringComparison.OrdinalIgnoreCase)
                            || x.OutputMappings.Any(m => string.Equals(m.ElementKey, key, StringComparison.OrdinalIgnoreCase))))
         {
@@ -168,12 +220,12 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     private void AddRule()
     {
-        var item = new QueryRuleDefinition { Name = "新查询规则", SqlTemplate = "SELECT column_name\nFROM schema.table_name\nWHERE input_column = {{element_key}}", DisplayOrder = Rules.Count * 10 + 10 };
-        Rules.Add(item); SelectedRule = item;
+        AddQueryObject();
     }
 
     private void RemoveRule()
     {
+        if (SelectedQueryObject is not null) { RemoveQueryObject(); return; }
         if (SelectedRule is null) return;
         var removed = SelectedRule;
         Rules.Remove(removed);
@@ -182,32 +234,93 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         finally { _suppressTestValuePersistence = false; }
         _ = SaveRuleTestValuesSafelyAsync(removed.Id, string.Empty);
     }
+    private void AddQueryObject()
+    {
+        var queryObject = new QueryObjectDefinition
+        {
+            Name = "新查询对象",
+            BaseSqlTemplate = "SELECT column_name\nFROM schema.table_name",
+            DisplayOrder = QueryObjects.Count * 10 + 10,
+            Entries =
+            [
+                new QueryEntryDefinition
+                {
+                    Name = "按条件查询",
+                    FilterTemplate = "input_column = {{element_key}}",
+                    DisplayOrder = 10
+                }
+            ]
+        };
+        QueryObjects.Add(queryObject);
+        SelectedQueryObject = queryObject;
+        RefreshExecutableRules();
+    }
+    private void RemoveQueryObject()
+    {
+        if (SelectedQueryObject is null) return;
+        var removedRuleIds = SelectedQueryObject.Entries.Select(x => x.RuntimeRuleId).ToArray();
+        QueryObjects.Remove(SelectedQueryObject);
+        SelectedQueryObject = QueryObjects.OrderBy(x => x.DisplayOrder).FirstOrDefault();
+        RefreshExecutableRules();
+        foreach (var ruleId in removedRuleIds) _ = SaveRuleTestValuesSafelyAsync(ruleId, string.Empty);
+    }
+    private void AddQueryEntry()
+    {
+        if (SelectedQueryObject is null) return;
+        var entry = new QueryEntryDefinition
+        {
+            Name = "新查询入口",
+            FilterTemplate = "input_column = {{element_key}}",
+            DisplayOrder = SelectedQueryObject.Entries.Count * 10 + 10
+        };
+        SelectedQueryObject.Entries.Add(entry);
+        SelectedQueryEntry = entry;
+        RefreshQueryEntryViews();
+        RefreshExecutableRules();
+    }
+    private void RemoveQueryEntry()
+    {
+        if (SelectedQueryObject is null || SelectedQueryEntry is null) return;
+        var removed = SelectedQueryEntry;
+        SelectedQueryObject.Entries.Remove(removed);
+        SelectedQueryEntry = SelectedQueryObject.Entries.OrderBy(x => x.DisplayOrder).FirstOrDefault();
+        RefreshQueryEntryViews();
+        RefreshExecutableRules();
+        _ = SaveRuleTestValuesSafelyAsync(removed.RuntimeRuleId, string.Empty);
+    }
     private void AddMapping()
     {
-        if (SelectedRule is null) return;
+        var mappings = SelectedQueryObject?.OutputMappings ?? SelectedRule?.OutputMappings;
+        if (mappings is null) return;
         RefreshSelectedRuleResultColumns();
-        var usedColumns = SelectedRule.OutputMappings.Select(x => x.ColumnName).ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var usedElements = SelectedRule.OutputMappings.Select(x => x.ElementKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var usedColumns = mappings.Select(x => x.ColumnName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var usedElements = mappings.Select(x => x.ElementKey).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var columnName = SelectedRuleResultColumns.FirstOrDefault(x => !usedColumns.Contains(x))
                          ?? SelectedRuleResultColumns.FirstOrDefault()
                          ?? string.Empty;
         var elementKey = Elements.FirstOrDefault(x => !usedElements.Contains(x.Key))?.Key ?? string.Empty;
-        SelectedRule.OutputMappings.Add(new OutputMapping { ColumnName = columnName, ElementKey = elementKey });
+        mappings.Add(new OutputMapping { ColumnName = columnName, ElementKey = elementKey });
+        Raise(nameof(SelectedObjectMappings)); SelectedObjectMappings?.Refresh();
         Raise(nameof(SelectedRuleMappings)); SelectedRuleMappings?.Refresh();
     }
     private void RemoveMapping()
     {
-        if (SelectedRule is null || SelectedMapping is null) return;
-        SelectedRule.OutputMappings.Remove(SelectedMapping); SelectedMapping = null; Raise(nameof(SelectedRuleMappings)); SelectedRuleMappings?.Refresh();
+        var mappings = SelectedQueryObject?.OutputMappings ?? SelectedRule?.OutputMappings;
+        if (mappings is null || SelectedMapping is null) return;
+        mappings.Remove(SelectedMapping); SelectedMapping = null;
+        Raise(nameof(SelectedObjectMappings)); SelectedObjectMappings?.Refresh();
+        Raise(nameof(SelectedRuleMappings)); SelectedRuleMappings?.Refresh();
     }
 
     public void RefreshSelectedRuleResultColumns()
     {
-        var parsed = SqlSelectListParser.GetResultColumnNames(SelectedRule?.SqlTemplate ?? string.Empty);
+        var sql = SelectedQueryObject?.BaseSqlTemplate ?? SelectedRule?.SqlTemplate ?? string.Empty;
+        var mappings = SelectedQueryObject?.OutputMappings ?? SelectedRule?.OutputMappings;
+        var parsed = SqlSelectListParser.GetResultColumnNames(sql);
         SelectedRuleResultColumns.Clear();
         foreach (var column in parsed) SelectedRuleResultColumns.Add(column);
-        if (SelectedRule is null) return;
-        foreach (var column in SelectedRule.OutputMappings.Select(x => x.ColumnName).Where(x => !string.IsNullOrWhiteSpace(x)))
+        if (mappings is null) return;
+        foreach (var column in mappings.Select(x => x.ColumnName).Where(x => !string.IsNullOrWhiteSpace(x)))
             if (!SelectedRuleResultColumns.Contains(column, StringComparer.OrdinalIgnoreCase)) SelectedRuleResultColumns.Add(column);
     }
 
@@ -222,8 +335,9 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     public IReadOnlyList<ElementDefinition> GetAvailableOutputElements(OutputMapping mapping)
     {
-        if (SelectedRule is null) return [];
-        var usedByOtherRows = SelectedRule.OutputMappings
+        var mappings = SelectedQueryObject?.OutputMappings ?? SelectedRule?.OutputMappings;
+        if (mappings is null) return [];
+        var usedByOtherRows = mappings
             .Where(x => !ReferenceEquals(x, mapping) && !string.IsNullOrWhiteSpace(x.ElementKey))
             .Select(x => x.ElementKey)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -237,6 +351,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         try
         {
         var synchronizedRuleCount = SynchronizeRenamedElementKeys();
+        RefreshExecutableRules();
         var snapshot = BuildSnapshot();
         var issues = ConfigurationValidator.Validate(snapshot);
         var errors = issues.Where(x => !x.IsWarning).ToArray();
@@ -245,7 +360,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         StatusMessage = "配置已保存，并立即用于后续查询。";
         _source = Clone(snapshot);
         if (synchronizedRuleCount > 0)
-            StatusMessage += $" 已同步 {synchronizedRuleCount} 条 SQL 规则中的全局元素引用。";
+            StatusMessage += $" 已同步 {synchronizedRuleCount} 个查询对象中的全局元素引用。";
         if (issues.Any(x => x.IsWarning)) StatusMessage += Environment.NewLine + string.Join(Environment.NewLine, issues.Where(x => x.IsWarning).Select(x => "提示：" + x.Message));
         }
         catch (Exception ex)
@@ -257,7 +372,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     private async Task TestSelectedRuleAsync()
     {
-        var rule = SelectedRule;
+        var rule = BuildSelectedEntryRule() ?? SelectedRule;
         if (rule is null) return;
         try
         {
@@ -295,10 +410,11 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     private void RefreshTestTemplate()
     {
-        if (SelectedRule is null) { SetTestValuesWithoutSaving(string.Empty); return; }
+        var rule = BuildSelectedEntryRule() ?? SelectedRule;
+        if (rule is null) { SetTestValuesWithoutSaving(string.Empty); return; }
         try
         {
-            var keys = SqlTemplateCompiler.Compile(SelectedRule.SqlTemplate ?? string.Empty).ParameterKeys.Distinct(StringComparer.OrdinalIgnoreCase);
+            var keys = SqlTemplateCompiler.Compile(rule.SqlTemplate ?? string.Empty).ParameterKeys.Distinct(StringComparer.OrdinalIgnoreCase);
             var existing = ParseTestValues(TestValues);
             TestValues = string.Join(Environment.NewLine, keys.Select(x => x + "=" + (existing.TryGetValue(x, out var value) ? value : string.Empty)));
         }
@@ -370,14 +486,15 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     private void RefreshSelectedRuleTestStatus()
     {
-        if (SelectedRule is null)
+        var rule = BuildSelectedEntryRule() ?? SelectedRule;
+        if (rule is null)
         {
-            SelectedRuleTestStatus = "请先从左侧选择一条规则。";
+            SelectedRuleTestStatus = "请先选择一个查询对象和查询入口。";
             return;
         }
-        SelectedRuleTestStatus = _liveValidatedRules.TryGetValue(SelectedRule.Id, out var hash) && hash == HashRule(SelectedRule)
-            ? "已通过当前连接测试。若再次修改 SQL、映射或规则设置，需要重新测试。"
-            : "尚未测试。请完整配置 SQL、输出映射和测试参数后测试当前规则。";
+        SelectedRuleTestStatus = _liveValidatedRules.TryGetValue(rule.Id, out var hash) && hash == HashRule(rule)
+            ? "已通过当前连接测试。若再次修改公共 SQL、映射或入口设置，需要重新测试。"
+            : "尚未测试。请完整配置公共 SQL、输出映射、查询入口和测试参数后再测试。";
     }
 
     private int SynchronizeRenamedElementKeys()
@@ -397,7 +514,10 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         var expectedRulesById = expectedRules.ToDictionary(x => x.Id);
         var sourceRulesById = _source.Rules.ToDictionary(x => x.Id);
 
-        var updatedCount = ElementKeySynchronizer.Apply(Rules, changes);
+        var updatedCount = QueryObjects.Count > 0
+            ? ElementKeySynchronizer.Apply(QueryObjects, changes)
+            : ElementKeySynchronizer.Apply(Rules, changes);
+        RefreshExecutableRules();
         foreach (var currentRule in Rules)
         {
             if (!_liveValidatedRules.TryGetValue(currentRule.Id, out var validatedHash)
@@ -417,6 +537,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
 
     private async Task ExportRulesAsync()
     {
+        RefreshExecutableRules();
         if (Rules.Count == 0)
         {
             StatusMessage = "当前没有可导出的 SQL 规则。";
@@ -431,8 +552,8 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         if (dialog.ShowDialog() != true) return;
         try
         {
-            var elementCount = await _services.Packages.ExportRulesAsync(Rules.ToArray(), Elements.ToArray(), dialog.FileName);
-            StatusMessage = $"已导出 {Rules.Count} 条 SQL 规则及其使用的 {elementCount} 个全局元素。规则包不包含服务器连接、密码、测试参数或患者数据。";
+            var elementCount = await _services.Packages.ExportQueryObjectsAsync(QueryObjects.ToArray(), Elements.ToArray(), dialog.FileName);
+            StatusMessage = $"已导出 {QueryObjects.Count} 个查询对象、{Rules.Count} 个查询入口及其使用的 {elementCount} 个全局元素。规则包不包含服务器连接、密码、测试参数或患者数据。";
         }
         catch (Exception ex) { StatusMessage = "导出规则失败：" + ex.Message; }
     }
@@ -457,7 +578,10 @@ public sealed class DraftConfigurationViewModel : ObservableObject
                     return;
                 }
 
-                confirmation = $"规则 {imported.Rules.Count} 条：将替换当前 {Rules.Count} 条规则。{Environment.NewLine}"
+                var importedStructure = imported.QueryObjects.Count > 0
+                    ? $"查询对象 {imported.QueryObjects.Count} 个、查询入口 {imported.Rules.Count} 个"
+                    : $"旧版规则 {imported.Rules.Count} 条（导入时自动整理为查询对象）";
+                confirmation = $"{importedStructure}：将替换当前 {QueryObjects.Count} 个查询对象、{Rules.Count} 个入口。{Environment.NewLine}"
                                + $"依赖全局元素 {imported.Elements.Count} 个：新增 {mergePlan.AddedCount} 个、更新 {mergePlan.UpdatedCount} 个、复用 {mergePlan.ReusedCount} 个。{Environment.NewLine}"
                                + $"本机其他 {mergePlan.UntouchedLocalCount} 个全局元素保持不变。{Environment.NewLine}{Environment.NewLine}"
                                + "导入内容将先载入编辑区，点击“保存”后才会正式生效。是否继续？";
@@ -485,15 +609,20 @@ public sealed class DraftConfigurationViewModel : ObservableObject
                 foreach (var element in mergePlan.MergedElements) Elements.Add(Clone(element));
                 SelectedElement = Elements.FirstOrDefault();
             }
-            Rules.Clear();
-            foreach (var rule in imported.Rules) Rules.Add(Clone(rule));
+            var importedObjects = imported.QueryObjects.Count > 0
+                ? imported.QueryObjects
+                : QueryObjectCompiler.MigrateRules(imported.Rules).QueryObjects;
+            QueryObjects.Clear();
+            foreach (var queryObject in importedObjects) QueryObjects.Add(Clone(queryObject));
+            RefreshExecutableRules();
             _liveValidatedRules.Clear();
-            SelectedRule = Rules.FirstOrDefault();
+            SelectedQueryObject = QueryObjects.OrderBy(x => x.DisplayOrder).FirstOrDefault();
+            if (SelectedQueryObject is null) SelectedRule = Rules.FirstOrDefault();
 
             var localKeys = Elements.Select(x => x.Key).Where(x => !string.IsNullOrWhiteSpace(x)).ToHashSet(StringComparer.OrdinalIgnoreCase);
             var referencedKeys = GetReferencedElementKeys(Rules);
             var missing = referencedKeys.Where(x => !localKeys.Contains(x)).OrderBy(x => x).ToArray();
-            StatusMessage = $"已把 {Rules.Count} 条规则载入当前编辑区，并替换编辑区原有规则；"
+            StatusMessage = $"已把 {Rules.Count} 条规则整理为 {QueryObjects.Count} 个查询对象并载入编辑区；"
                 + (mergePlan is null
                     ? "旧版规则包未包含全局元素，本机元素保持不变；"
                     : $"全局元素已在编辑区合并：新增 {mergePlan.AddedCount} 个、更新 {mergePlan.UpdatedCount} 个、复用 {mergePlan.ReusedCount} 个；")
@@ -519,6 +648,29 @@ public sealed class DraftConfigurationViewModel : ObservableObject
                 if (!string.IsNullOrWhiteSpace(mapping.ElementKey)) referencedKeys.Add(mapping.ElementKey);
         }
         return referencedKeys;
+    }
+
+    private QueryRuleDefinition? BuildSelectedEntryRule()
+    {
+        if (SelectedQueryObject is null || SelectedQueryEntry is null) return null;
+        return QueryObjectCompiler.Compile([SelectedQueryObject])
+            .FirstOrDefault(x => x.Id == (SelectedQueryEntry.RuntimeRuleId == Guid.Empty
+                ? SelectedQueryEntry.Id
+                : SelectedQueryEntry.RuntimeRuleId));
+    }
+
+    private void RefreshExecutableRules()
+    {
+        if (QueryObjects.Count == 0) return;
+        var compiled = QueryObjectCompiler.Compile(QueryObjects);
+        Rules.Clear();
+        foreach (var rule in compiled) Rules.Add(Clone(rule));
+    }
+
+    private void RefreshQueryEntryViews()
+    {
+        Raise(nameof(SelectedQueryObject));
+        CollectionViewSource.GetDefaultView(QueryObjects)?.Refresh();
     }
 
     private static Dictionary<string, string> ParseTestValues(string text)
@@ -557,4 +709,5 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     private static ConfigurationSnapshot Clone(ConfigurationSnapshot value) => JsonSerializer.Deserialize<ConfigurationSnapshot>(JsonSerializer.Serialize(value))!;
     private static ElementDefinition Clone(ElementDefinition value) => JsonSerializer.Deserialize<ElementDefinition>(JsonSerializer.Serialize(value))!;
     private static QueryRuleDefinition Clone(QueryRuleDefinition value) => JsonSerializer.Deserialize<QueryRuleDefinition>(JsonSerializer.Serialize(value))!;
+    private static QueryObjectDefinition Clone(QueryObjectDefinition value) => JsonSerializer.Deserialize<QueryObjectDefinition>(JsonSerializer.Serialize(value))!;
 }

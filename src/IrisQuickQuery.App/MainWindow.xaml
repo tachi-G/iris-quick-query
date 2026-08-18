@@ -87,7 +87,7 @@
                             Command="{Binding NavigateCommand}" CommandParameter="query"/>
                     <Button Style="{StaticResource ElementsNavButton}" Content="02    元素配置"
                             Command="{Binding NavigateCommand}" CommandParameter="elements"/>
-                    <Button Style="{StaticResource RulesNavButton}" Content="03    SQL 规则"
+                    <Button Style="{StaticResource RulesNavButton}" Content="03    SQL 查询对象"
                             Command="{Binding NavigateCommand}" CommandParameter="rules"/>
                     <Button Style="{StaticResource ConnectionNavButton}" Content="04    连接设置"
                             Command="{Binding NavigateCommand}" CommandParameter="connection"/>

@@ -306,7 +306,7 @@ public sealed class QueryViewModel : ObservableObject
         {
             var readiness = BuildRuleReadiness(context);
             if (readiness.Count == 0)
-                return "未执行任何规则 · 当前配置没有启用规则。请在 SQL 规则页配置并保存规则。";
+                return "未执行任何查询入口 · 当前配置没有启用入口。请在 SQL 查询对象页配置并保存。";
 
             var compileErrors = readiness.Where(x => x.State == "SqlCompileError").ToArray();
             if (compileErrors.Length > 0)
