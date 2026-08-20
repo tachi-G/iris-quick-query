@@ -1,9 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Data;
 using System.Globalization;
-using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Windows;
+using IrisQuickQuery.App.Services;
 using IrisQuickQuery.Core.Models;
 using IrisQuickQuery.Core.Services;
 
@@ -148,19 +148,15 @@ public sealed class QueryViewModel : ObservableObject
     }
 
     public void CancelFieldEdit(ElementFieldViewModel field) { field.CancelEdit(); RefreshFromContext(); }
-    public void CopyField(ElementFieldViewModel field)
+    public async Task CopyFieldAsync(ElementFieldViewModel field, string? selectedText = null)
     {
-        var value = field.FullValue;
+        var value = !string.IsNullOrEmpty(selectedText)
+            ? selectedText
+            : !string.IsNullOrEmpty(field.FullValue) ? field.FullValue : field.InputText;
         if (string.IsNullOrEmpty(value)) return;
-        try
-        {
-            Clipboard.SetText(value);
-            field.CopyHint = "已复制";
-        }
-        catch (ExternalException)
-        {
-            field.CopyHint = "剪贴板忙，请重试";
-        }
+        field.CopyHint = await ClipboardCopyService.TrySetTextAsync(value)
+            ? "已复制"
+            : "剪贴板忙，请重试";
     }
 
     private async Task SelectListRowAsync(Guid executionId, int index)

@@ -9,7 +9,7 @@
     <ApplicationIcon>Assets\iris-app-icon.ico</ApplicationIcon>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PlatformTarget>x64</PlatformTarget>
-    <Version>1.0.18</Version>
+    <Version>1.0.19</Version>
     <PublishSingleFile>false</PublishSingleFile>
     <SelfContained>true</SelfContained>
     <SatelliteResourceLanguages>zh-Hans;en</SatelliteResourceLanguages>
@@ -17,5 +17,8 @@
   <ItemGroup>
     <ProjectReference Include="..\IrisQuickQuery.Core\IrisQuickQuery.Core.csproj" />
     <ProjectReference Include="..\IrisQuickQuery.Infrastructure\IrisQuickQuery.Infrastructure.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="IrisQuickQuery.Core.Tests" />
   </ItemGroup>
 </Project>

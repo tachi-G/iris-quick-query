@@ -79,7 +79,12 @@ public partial class QueryPage : UserControl
     private async void FieldEditor_OnKeyDown(object sender, KeyEventArgs e)
     {
         if (sender is not TextBox { Tag: ElementFieldViewModel field }) return;
-        if (e.Key == Key.Enter) { e.Handled = true; await (ViewModel?.CommitFieldAndRunAsync(field) ?? Task.CompletedTask); }
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            try { await (ViewModel?.CommitFieldAndRunAsync(field) ?? Task.CompletedTask); }
+            catch { if (ViewModel is { } viewModel) viewModel.StatusSummary = "查询未能完成，请重试。"; }
+        }
         else if (e.Key == Key.Escape) { e.Handled = true; ViewModel?.CancelFieldEdit(field); }
     }
     private void ReadOnlyField_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -96,7 +101,21 @@ public partial class QueryPage : UserControl
     {
         if (sender is not TextBox { Tag: ElementFieldViewModel field }) return;
         if (e.Key == Key.F2) { field.BeginEdit(); e.Handled = true; }
-        else if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { ViewModel?.CopyField(field); e.Handled = true; }
+    }
+
+    private void ReadOnlyFieldCopy_OnCanExecute(object sender, CanExecuteRoutedEventArgs e)
+    {
+        if (sender is not TextBox { Tag: ElementFieldViewModel field } box) return;
+        e.CanExecute = box.SelectionLength > 0 || !string.IsNullOrEmpty(field.FullValue) || !string.IsNullOrEmpty(box.Text);
+        e.Handled = true;
+    }
+
+    private async void ReadOnlyFieldCopy_OnExecuted(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (sender is not TextBox { Tag: ElementFieldViewModel field } box) return;
+        e.Handled = true;
+        try { await (ViewModel?.CopyFieldAsync(field, box.SelectionLength > 0 ? box.SelectedText : null) ?? Task.CompletedTask); }
+        catch { field.CopyHint = "剪贴板忙，请重试"; }
     }
 
     private void FieldEditor_OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
