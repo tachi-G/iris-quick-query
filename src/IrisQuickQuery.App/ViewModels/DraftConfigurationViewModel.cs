@@ -26,6 +26,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     private OutputMapping? _selectedMapping;
     private string _name = string.Empty;
     private string _statusMessage = string.Empty;
+    private string _elementStatusMessage = string.Empty;
     private string _testValues = string.Empty;
     private string _selectedRuleTestStatus = "请完整配置并测试当前规则。";
     private DataView? _testPreview;
@@ -42,6 +43,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
     public Array ResultModes => Enum.GetValues(typeof(RuleResultMode));
     public string Name { get => _name; set => Set(ref _name, value); }
     public string StatusMessage { get => _statusMessage; set => Set(ref _statusMessage, value); }
+    public string ElementStatusMessage { get => _elementStatusMessage; set => Set(ref _elementStatusMessage, value); }
     public string TestValues
     {
         get => _testValues;
@@ -153,7 +155,7 @@ public sealed class DraftConfigurationViewModel : ObservableObject
         RemoveQueryEntryCommand = new RelayCommand(RemoveQueryEntry, () => SelectedQueryObject is not null && SelectedQueryEntry is not null);
         AddMappingCommand = new RelayCommand(AddMapping, () => SelectedQueryObject is not null || SelectedRule is not null);
         RemoveMappingCommand = new RelayCommand(RemoveMapping, () => (SelectedQueryObject is not null || SelectedRule is not null) && SelectedMapping is not null);
-        SaveCommand = new AsyncRelayCommand(SaveAsync);
+        SaveCommand = new AsyncRelayCommand(parameter => SaveAsync(parameter?.ToString()));
         TestRuleCommand = new AsyncRelayCommand(TestSelectedRuleAsync, () => SelectedRule is not null);
         RefreshTestValuesCommand = new RelayCommand(RefreshTestTemplate, () => SelectedRule is not null);
         ImportRulesCommand = new AsyncRelayCommand(ImportRulesAsync);
@@ -345,29 +347,40 @@ public sealed class DraftConfigurationViewModel : ObservableObject
                                    || string.Equals(x.Key, mapping.ElementKey, StringComparison.OrdinalIgnoreCase)).ToArray();
     }
 
-    public async Task SaveAsync()
+    public Task SaveAsync() => SaveAsync(null);
+
+    public async Task SaveAsync(string? pageScope)
     {
         await _saveGate.WaitAsync();
         try
         {
-        var synchronizedRuleCount = SynchronizeRenamedElementKeys();
+        SynchronizeRenamedElementKeys();
         RefreshExecutableRules();
         var snapshot = BuildSnapshot();
         var issues = ConfigurationValidator.Validate(snapshot);
         var errors = issues.Where(x => !x.IsWarning).ToArray();
-        if (errors.Length > 0) { StatusMessage = string.Join(Environment.NewLine, errors.Take(8).Select(x => "• " + x.Message)); return; }
+        if (errors.Length > 0)
+        {
+            SetPageStatus(pageScope, string.Join(Environment.NewLine, errors.Take(8).Select(x => "• " + x.Message)));
+            return;
+        }
         await _services.Configurations.SaveCurrentAsync(snapshot);
-        StatusMessage = "配置已保存，并立即用于后续查询。";
+        SetPageStatus(pageScope, "配置已保存。");
         _source = Clone(snapshot);
-        if (synchronizedRuleCount > 0)
-            StatusMessage += $" 已同步 {synchronizedRuleCount} 个查询对象中的全局元素引用。";
-        if (issues.Any(x => x.IsWarning)) StatusMessage += Environment.NewLine + string.Join(Environment.NewLine, issues.Where(x => x.IsWarning).Select(x => "提示：" + x.Message));
         }
         catch (Exception ex)
         {
-            StatusMessage = "保存失败：" + ex.Message;
+            SetPageStatus(pageScope, "保存失败：" + ex.Message);
         }
         finally { _saveGate.Release(); }
+    }
+
+    private void SetPageStatus(string? pageScope, string message)
+    {
+        if (string.Equals(pageScope, "elements", StringComparison.OrdinalIgnoreCase))
+            ElementStatusMessage = message;
+        else
+            StatusMessage = message;
     }
 
     private async Task TestSelectedRuleAsync()

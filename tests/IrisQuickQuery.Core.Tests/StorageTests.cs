@@ -439,7 +439,7 @@ public sealed class StorageTests : IDisposable
         Assert.Equal("患者编号", saved.Elements.Single(x => x.Key == "patient_id").Label);
         Assert.Equal(360, saved.Elements.Single(x => x.Key == "patient_id").Width);
         Assert.True(saved.Elements.Single(x => x.Key == "patient_id").IsDate);
-        Assert.Contains("已保存", viewModel.StatusMessage);
+        Assert.Equal("配置已保存。", viewModel.StatusMessage);
     }
 
     [Fact]
@@ -481,7 +481,7 @@ public sealed class StorageTests : IDisposable
 
         Assert.Null(exception);
         Assert.Equal(ElementDataType.Int64, (await repository.GetCurrentAsync())!.Elements.Single(x => x.Key == "patient_id").DataType);
-        Assert.Contains("已保存", viewModel.StatusMessage);
+        Assert.Equal("配置已保存。", viewModel.StatusMessage);
     }
 
     [Fact]
@@ -504,8 +504,7 @@ public sealed class StorageTests : IDisposable
         Assert.Contains("{{IDCardNumber}}", saved.Rules.Single().SqlTemplate);
         Assert.DoesNotContain("{{IDCard}}", saved.Rules.Single().SqlTemplate);
         Assert.Contains(saved.Rules.Single().OutputMappings, x => x.ElementKey == "visit_no");
-        Assert.Contains("已同步 1 个查询对象", viewModel.StatusMessage);
-        Assert.DoesNotContain("待测试", viewModel.StatusMessage);
+        Assert.Equal("配置已保存。", viewModel.StatusMessage);
     }
 
     [Fact]
@@ -646,6 +645,91 @@ public sealed class StorageTests : IDisposable
         var reopened = new QueryViewModel(CreateServices(paths, new SqliteConfigurationRepository(paths)));
         await reopened.LoadAsync();
         Assert.Equal(["readonly_result", "visible_input"], reopened.Fields.Select(x => x.Definition.Key));
+    }
+
+    [Fact]
+    public async Task ElementSaveMessage_IsPageScopedAndOmitsCycleWarnings()
+    {
+        var paths = new AppDataPaths(_temp);
+        var repository = new SqliteConfigurationRepository(paths);
+        await repository.InitializeAsync();
+        var current = TestConfig.CreateElements("a", "b");
+        current.Rules.Add(TestConfig.Rule("a 到 b", "a", "b"));
+        current.Rules.Add(TestConfig.Rule("b 到 a", "b", "a"));
+        await repository.SaveCurrentAsync(current);
+        var viewModel = new DraftConfigurationViewModel(CreateServices(paths, repository));
+        await viewModel.LoadCurrentAsync();
+
+        await viewModel.SaveAsync("elements");
+
+        Assert.Equal("配置已保存。", viewModel.ElementStatusMessage);
+        Assert.DoesNotContain("受控循环", viewModel.ElementStatusMessage);
+        Assert.DoesNotContain("配置已保存", viewModel.StatusMessage);
+    }
+
+    [Fact]
+    public async Task QueryReload_WithUnchangedConfiguration_PreservesResultsAndShowsObjectAsSource()
+    {
+        var paths = new AppDataPaths(_temp);
+        var repository = new SqliteConfigurationRepository(paths);
+        await repository.InitializeAsync();
+        var current = TestConfig.CreateElements("patient_id", "patient_name");
+        current.Elements.Single(x => x.Key == "patient_name").CanInput = false;
+        var entry = new QueryEntryDefinition
+        {
+            Name = "按患者编号查询",
+            FilterTemplate = "PATIENT_ID={{patient_id}}"
+        };
+        current.QueryObjects =
+        [
+            new QueryObjectDefinition
+            {
+                Name = "患者基本信息",
+                BaseSqlTemplate = "SELECT PATIENT_NAME FROM Patient",
+                OutputMappings = [new OutputMapping { ColumnName = "PATIENT_NAME", ElementKey = "patient_name" }],
+                Entries = [entry]
+            }
+        ];
+        current.Rules = QueryObjectCompiler.Compile(current.QueryObjects).ToList();
+        await repository.SaveCurrentAsync(current);
+
+        var fake = new FakeExecutor
+        {
+            [entry.RuntimeRuleId] = _ =>
+            [
+                new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["PATIENT_NAME"] = "张三"
+                }
+            ]
+        };
+        var profiles = new ConnectionProfileRepository(repository);
+        var credentials = new DpapiCredentialStore(repository);
+        var queryExecutor = new OdbcQueryExecutor(profiles, credentials);
+        var logger = new ExecutionMetadataLogger(paths);
+        var services = new ApplicationServices(paths, repository, profiles, credentials, queryExecutor,
+            new RuleScheduler(fake, logger), logger, new ConfigurationPackageService());
+        var viewModel = new QueryViewModel(services);
+        await viewModel.LoadAsync();
+        viewModel.Fields.Single(x => x.Definition.Key == "patient_id").InputText = "P001";
+
+        await viewModel.StartNewRunAsync();
+
+        var resultField = viewModel.Fields.Single(x => x.Definition.Key == "patient_name");
+        Assert.Equal("张三", resultField.InputText);
+        Assert.Equal("患者基本信息", resultField.SourceLabel);
+        Assert.NotEmpty(viewModel.TraceItems);
+        var resultFieldBeforeReload = resultField;
+        var traceCount = viewModel.TraceItems.Count;
+        var statusBeforeReload = viewModel.StatusSummary;
+
+        await viewModel.LoadAsync();
+
+        Assert.Same(resultFieldBeforeReload, viewModel.Fields.Single(x => x.Definition.Key == "patient_name"));
+        Assert.Equal("张三", resultFieldBeforeReload.InputText);
+        Assert.Equal("患者基本信息", resultFieldBeforeReload.SourceLabel);
+        Assert.Equal(traceCount, viewModel.TraceItems.Count);
+        Assert.Equal(statusBeforeReload, viewModel.StatusSummary);
     }
 
     [Fact]

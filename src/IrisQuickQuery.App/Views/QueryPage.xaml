@@ -56,7 +56,7 @@
             <Setter Property="Padding" Value="12,9"/>
             <Setter Property="MinHeight" Value="40"/>
             <Style.Triggers>
-                <Trigger Property="IsKeyboardFocused" Value="True">
+                <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                     <Setter Property="BorderThickness" Value="2"/>
                 </Trigger>
@@ -81,56 +81,6 @@
                                Foreground="{StaticResource TextMutedBrush}" FontSize="14"/>
                 </StackPanel>
             </Grid>
-
-            <!-- Iris signature: a single structured rail for the whole query lifecycle. -->
-            <Border x:Name="QueryStatusRail" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Margin="0,0,0,24">
-                <Grid MinHeight="84">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="4"/>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="340"/>
-                    </Grid.ColumnDefinitions>
-                    <Border Background="{StaticResource PrimaryBrush}"/>
-                    <StackPanel Grid.Column="1" Margin="16,12,24,12" VerticalAlignment="Center">
-                        <TextBlock Text="查询链路" FontSize="12" Foreground="{StaticResource TextMutedBrush}" Margin="0,0,0,4"/>
-                        <TextBlock Text="{Binding StatusSummary}" FontSize="14" Foreground="{StaticResource TextBrush}"/>
-                    </StackPanel>
-                    <Grid Grid.Column="2" Margin="0,0,16,0" VerticalAlignment="Center">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Orientation="Horizontal">
-                            <Border Width="8" Height="8" Background="{StaticResource PrimaryBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="人工输入" FontSize="12" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <Border Grid.Column="1" Height="1" Background="{StaticResource BorderBrush}" Margin="10,0"/>
-                        <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <Border Width="8" Height="8" Margin="0,0,8,0" VerticalAlignment="Center">
-                                <Border.Style>
-                                    <Style TargetType="Border">
-                                        <Setter Property="Background" Value="{StaticResource BorderStrongBrush}"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsRunning}" Value="True">
-                                                <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </Border.Style>
-                            </Border>
-                            <TextBlock Text="规则执行" FontSize="12" VerticalAlignment="Center"/>
-                        </StackPanel>
-                        <Border Grid.Column="3" Height="1" Background="{StaticResource BorderBrush}" Margin="10,0"/>
-                        <StackPanel Grid.Column="4" Orientation="Horizontal">
-                            <Border Width="8" Height="8" Background="{StaticResource BorderStrongBrush}" Margin="0,0,8,0" VerticalAlignment="Center"/>
-                            <TextBlock Text="结果稳定" FontSize="12" VerticalAlignment="Center"/>
-                        </StackPanel>
-                    </Grid>
-                </Grid>
-            </Border>
 
             <Grid x:Name="QueryConditionsHeader" Margin="0,0,0,12">
                 <Grid.RowDefinitions>
@@ -182,9 +132,7 @@
                                         <TextBlock Text="{Binding Label}" HorizontalAlignment="Left"/>
                                         <TextBlock FontFamily="{StaticResource MonoFont}" Foreground="{StaticResource TextMutedBrush}"
                                                    FontSize="12" HorizontalAlignment="Left">
-                                            <TextBlock.Inlines>
-                                                <Run Text="{Binding Key,Mode=OneWay}"/><Run Text="  ·  "/><Run Text="{Binding Group,Mode=OneWay}"/>
-                                            </TextBlock.Inlines>
+                                            <TextBlock.Inlines><Run Text="{Binding Key,Mode=OneWay}"/></TextBlock.Inlines>
                                         </TextBlock>
                                     </StackPanel>
                                 </Button>
@@ -214,15 +162,15 @@
                 </ItemsControl.ItemsPanel>
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border Width="{Binding DisplayWidth}" MinWidth="160" MinHeight="142"
+                        <Border Width="{Binding DisplayWidth}" MinWidth="160" MinHeight="118"
                                 Background="{StaticResource SurfaceBrush}" BorderBrush="{StaticResource BorderSubtleBrush}"
-                                BorderThickness="1" Margin="0,0,16,16" Tag="{Binding}"
+                                BorderThickness="1" Margin="0,0,16,12" Tag="{Binding}"
                                 PreviewMouseLeftButtonDown="ConditionCard_OnPreviewMouseLeftButtonDown"
                                 PreviewMouseMove="ConditionCard_OnPreviewMouseMove">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="4"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                 <Border Style="{StaticResource FieldRail}"/>
-                                <Grid Grid.Column="1" Margin="16,12,16,12">
+                                <Grid Grid.Column="1" Margin="16,8,16,8">
                                     <Grid.RowDefinitions>
                                         <RowDefinition Height="Auto"/>
                                         <RowDefinition Height="Auto"/>
@@ -245,23 +193,24 @@
                                                 CommandParameter="{Binding}"
                                                 Visibility="{Binding DataContext.IsEditingConditions,RelativeSource={RelativeSource AncestorType=UserControl},Converter={StaticResource BoolVisible}}"/>
                                     </Grid>
-                                    <TextBox Grid.Row="1" Style="{StaticResource EditableQueryField}" Margin="-10,12,-10,0"
+                                    <TextBox Grid.Row="1" Style="{StaticResource EditableQueryField}" Margin="-10,8,-10,0"
                                              Text="{Binding InputText,UpdateSourceTrigger=PropertyChanged}"
                                              Visibility="{Binding IsEditorVisible,Converter={StaticResource BoolVisible}}"
                                              KeyDown="FieldEditor_OnKeyDown" IsVisibleChanged="FieldEditor_OnIsVisibleChanged" Tag="{Binding}"/>
-                                     <Border Grid.Row="1" Style="{StaticResource ReadOnlyFieldValue}" Margin="-10,12,-10,0"
-                                             Visibility="{Binding IsEditorVisible,Converter={StaticResource BoolCollapsed}}"
-                                             PreviewMouseLeftButtonDown="ReadOnlyField_OnPreviewMouseLeftButtonDown" Tag="{Binding}"
-                                             Focusable="True" PreviewKeyDown="ReadOnlyField_OnPreviewKeyDown">
+                                     <Border Grid.Row="1" Style="{StaticResource ReadOnlyFieldValue}" Margin="-10,8,-10,0"
+                                             Visibility="{Binding IsEditorVisible,Converter={StaticResource BoolCollapsed}}">
                                         <Grid>
-                                            <TextBlock Text="{Binding InputText}" FontSize="16" Foreground="{StaticResource TextMutedBrush}"
-                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBox Text="{Binding InputText,Mode=OneWay}" FontSize="16" Foreground="{StaticResource TextMutedBrush}"
+                                                     Background="Transparent" BorderThickness="0" Padding="0" IsReadOnly="True"
+                                                     IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"
+                                                     PreviewMouseLeftButtonDown="ReadOnlyField_OnPreviewMouseLeftButtonDown" Tag="{Binding}"
+                                                     PreviewKeyDown="ReadOnlyField_OnPreviewKeyDown"/>
                                             <TextBlock Text="{Binding CopyHint}" Foreground="{StaticResource SuccessBrush}"
-                                                       HorizontalAlignment="Right" FontSize="12"/>
+                                                       HorizontalAlignment="Right" FontSize="12" IsHitTestVisible="False"/>
                                         </Grid>
                                     </Border>
                                     <TextBlock Grid.Row="2" Text="{Binding SourceLabel,StringFormat=来源：{0}}"
-                                               Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="0,8,0,0"/>
+                                               Foreground="{StaticResource TextMutedBrush}" FontSize="12" Margin="0,6,0,0"/>
                                 </Grid>
                             </Grid>
                         </Border>
@@ -282,7 +231,8 @@
             <ItemsControl ItemsSource="{Binding ListResults}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
-                        <Border BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1" Margin="0,0,0,16">
+                        <Border x:Name="QueryResultCard" BorderBrush="{StaticResource BorderSubtleBrush}" BorderThickness="1"
+                                Margin="0,0,0,16" HorizontalAlignment="Left">
                             <StackPanel>
                                 <Border Background="{StaticResource SurfaceMutedBrush}" Padding="16,12">
                                     <Grid>
@@ -292,7 +242,8 @@
                                     </Grid>
                                 </Border>
                                 <DataGrid ItemsSource="{Binding Rows}" SelectedIndex="{Binding SelectedIndex,Mode=TwoWay}"
-                                          IsReadOnly="True" SelectionMode="Single" MaxHeight="300" BorderThickness="0,1,0,0"/>
+                                          IsReadOnly="True" SelectionMode="Single" MaxHeight="300" BorderThickness="0,1,0,0"
+                                          HorizontalAlignment="Left" ColumnWidth="Auto" MinColumnWidth="90" MaxColumnWidth="260"/>
                             </StackPanel>
                         </Border>
                     </DataTemplate>
