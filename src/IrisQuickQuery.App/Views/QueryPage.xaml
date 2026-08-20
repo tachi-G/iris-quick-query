@@ -204,7 +204,13 @@
                                                      Background="Transparent" BorderThickness="0" Padding="0" IsReadOnly="True"
                                                      IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"
                                                      PreviewMouseLeftButtonDown="ReadOnlyField_OnPreviewMouseLeftButtonDown" Tag="{Binding}"
-                                                     PreviewKeyDown="ReadOnlyField_OnPreviewKeyDown"/>
+                                                     PreviewKeyDown="ReadOnlyField_OnPreviewKeyDown">
+                                                <TextBox.CommandBindings>
+                                                    <CommandBinding Command="{x:Static ApplicationCommands.Copy}"
+                                                                    CanExecute="ReadOnlyFieldCopy_OnCanExecute"
+                                                                    Executed="ReadOnlyFieldCopy_OnExecuted"/>
+                                                </TextBox.CommandBindings>
+                                            </TextBox>
                                             <TextBlock Text="{Binding CopyHint}" Foreground="{StaticResource SuccessBrush}"
                                                        HorizontalAlignment="Right" FontSize="12" IsHitTestVisible="False"/>
                                         </Grid>

@@ -2,6 +2,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Data;
+using System.Windows.Input;
 using IrisQuickQuery.App;
 using IrisQuickQuery.App.Controls;
 using IrisQuickQuery.App.ViewModels;
@@ -190,6 +191,8 @@ public sealed class WpfSmokeTests
                 var selectableReadOnlyValue = FindVisualChildren<TextBox>(conditionItems)
                     .Single(box => box.IsReadOnly);
                 Assert.True(selectableReadOnlyValue.IsReadOnlyCaretVisible);
+                Assert.Contains(selectableReadOnlyValue.CommandBindings.Cast<CommandBinding>(),
+                    binding => binding.Command == ApplicationCommands.Copy);
 
                 var elementsGrid = Assert.IsType<DataGrid>(elementsPage.FindName("ElementsGrid"));
                 var headers = elementsGrid.Columns.Select(x => x.Header?.ToString()).ToArray();
