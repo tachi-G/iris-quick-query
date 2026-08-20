@@ -2,7 +2,7 @@
 
 面向医院项目运维人员的 Windows 单机只读查询工具。应用将患者标识、登记号、内部 ID、就诊日期等信息抽象为全局业务元素，再通过“查询对象 + 查询入口”描述元素之间的查询关系，让使用者从任意已知字段出发，逐步获得相关信息。
 
-当前基准版本：`1.0.16`
+当前基准版本：`1.0.18`
 
 > 本项目只负责安全地组织和执行只读查询。数据库账号仍必须由服务器端限制为只读，客户端校验不能替代数据库权限。
 
@@ -114,7 +114,7 @@ artifacts\publish\win-x64
 输出文件：
 
 ```text
-artifacts\installer\IrisQuickQuery-Setup-1.0.16-win-x64.exe
+artifacts\installer\IrisQuickQuery-Setup-1.0.18-win-x64.exe
 ```
 
 构建脚本会查找仓库内工具目录或系统安装的 Inno Setup 6/7。
@@ -128,7 +128,7 @@ artifacts\installer\IrisQuickQuery-Setup-1.0.16-win-x64.exe
 输出文件：
 
 ```text
-artifacts\portable\IrisQuickQuery-Portable-1.0.16-win-x64.zip
+artifacts\portable\IrisQuickQuery-Portable-1.0.18-win-x64.zip
 ```
 
 绿色版不包含 `config.db`、`Logs`、`Backups`、连接配置、密码或患者数据。它与安装版共用当前 Windows 用户的本地数据目录。

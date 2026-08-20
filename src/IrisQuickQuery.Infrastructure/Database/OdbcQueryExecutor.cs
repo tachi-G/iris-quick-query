@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Data.Odbc;
 using IrisQuickQuery.Core.Models;
 using IrisQuickQuery.Core.Services;
@@ -23,8 +24,51 @@ public sealed class OdbcQueryExecutor : IDatabaseQueryExecutor
         if (unsafeIssue is not null) throw new InvalidOperationException("ODBC 执行已阻止非只读 SQL：" + unsafeIssue.Message);
         var profile = await _profiles.GetAsync(cancellationToken);
         var password = await _credentials.GetAsync(cancellationToken) ?? string.Empty;
-        await using var connection = new OdbcConnection(BuildConnectionString(profile, password));
-        await connection.OpenAsync(cancellationToken);
+        return await Task.Run(
+            () => ExecuteOnWorkerAsync(request, profile, password, cancellationToken),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<QueryExecutionResult> ExecuteOnWorkerAsync(QueryExecutionRequest request,
+        ConnectionProfile profile, string password, CancellationToken cancellationToken)
+    {
+        var connectionString = BuildConnectionString(profile, password);
+        await using var connection = await OpenWithSingleRetryAsync(
+            token => OpenConnectionAsync(connectionString, token), cancellationToken).ConfigureAwait(false);
+        return await ExecuteCommandAsync(connection, request, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<OdbcConnection> OpenConnectionAsync(string connectionString, CancellationToken cancellationToken)
+    {
+        var connection = new OdbcConnection(connectionString);
+        try
+        {
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+            return connection;
+        }
+        catch
+        {
+            await connection.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+    }
+
+    internal static async Task<T> OpenWithSingleRetryAsync<T>(Func<CancellationToken, Task<T>> openAsync,
+        CancellationToken cancellationToken, TimeSpan? retryDelay = null)
+    {
+        for (var attempt = 0; ; attempt++)
+        {
+            try { return await openAsync(cancellationToken).ConfigureAwait(false); }
+            catch (DbException) when (attempt == 0 && !cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(retryDelay ?? TimeSpan.FromMilliseconds(200), cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private static async Task<QueryExecutionResult> ExecuteCommandAsync(OdbcConnection connection,
+        QueryExecutionRequest request, CancellationToken cancellationToken)
+    {
         await using var command = connection.CreateCommand();
         command.CommandText = request.CommandText;
         command.CommandType = CommandType.Text;
@@ -60,8 +104,11 @@ public sealed class OdbcQueryExecutor : IDatabaseQueryExecutor
 
     public async Task TestConnectionAsync(ConnectionProfile profile, string password, CancellationToken cancellationToken = default)
     {
-        await using var connection = new OdbcConnection(BuildConnectionString(profile, password));
-        await connection.OpenAsync(cancellationToken);
+        await Task.Run(async () =>
+        {
+            await using var connection = new OdbcConnection(BuildConnectionString(profile, password));
+            await connection.OpenAsync(cancellationToken).ConfigureAwait(false);
+        }, cancellationToken).ConfigureAwait(false);
     }
 
     public static string BuildConnectionString(ConnectionProfile profile, string password)

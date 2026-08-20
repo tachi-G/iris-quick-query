@@ -79,7 +79,7 @@
                                        Visibility="{Binding HasSavedPassword,Converter={StaticResource BoolVisible}}"/>
                         </StackPanel>
                         <StackPanel Grid.Row="3" Grid.Column="1" Margin="10,0,0,14">
-                            <TextBlock Text="TLS 配置名称（可选）" Margin="0,0,0,4"/>
+                            <TextBlock Text="SSL/TLS Server Name（可选）" Margin="0,0,0,4"/>
                             <TextBox Style="{StaticResource ConnectionTextBox}" Text="{Binding TlsConfigurationName}"/>
                         </StackPanel>
 

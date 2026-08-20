@@ -84,8 +84,8 @@ public partial class QueryPage : UserControl
     }
     private void ReadOnlyField_OnPreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is not Border { Tag: ElementFieldViewModel field } border) return;
-        border.Focus();
+        if (sender is not TextBox { Tag: ElementFieldViewModel field } box) return;
+        box.Focus();
         if (e.ClickCount == 2)
         {
             field.BeginEdit();
@@ -94,7 +94,7 @@ public partial class QueryPage : UserControl
     }
     private void ReadOnlyField_OnPreviewKeyDown(object sender, KeyEventArgs e)
     {
-        if (sender is not Border { Tag: ElementFieldViewModel field }) return;
+        if (sender is not TextBox { Tag: ElementFieldViewModel field }) return;
         if (e.Key == Key.F2) { field.BeginEdit(); e.Handled = true; }
         else if (e.Key == Key.C && Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) { ViewModel?.CopyField(field); e.Handled = true; }
     }

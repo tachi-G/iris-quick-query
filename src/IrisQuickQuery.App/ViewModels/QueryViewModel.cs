@@ -20,6 +20,7 @@ public sealed class QueryViewModel : ObservableObject
     private bool _isRunning;
     private bool _hasConditionSelection;
     private bool _isEditingConditions;
+    private bool _isLoaded;
     private readonly Dictionary<string, ElementFieldViewModel> _fieldCache = new(StringComparer.OrdinalIgnoreCase);
 
     public ObservableCollection<ElementFieldViewModel> Fields { get; } = [];
@@ -70,7 +71,16 @@ public sealed class QueryViewModel : ObservableObject
 
     public async Task LoadAsync()
     {
-        _snapshot = await _services.Configurations.GetCurrentAsync() ?? new ConfigurationSnapshot();
+        var current = await _services.Configurations.GetCurrentAsync() ?? new ConfigurationSnapshot();
+        if (_isLoaded && current.Id == _snapshot.Id && current.CreatedAt == _snapshot.CreatedAt) return;
+
+        _runCancellation?.Cancel();
+        if (_context is not null) _context.Changed -= ContextOnChanged;
+        _context = null;
+        IsRunning = false;
+        ListResults.Clear();
+        TraceItems.Clear();
+        _snapshot = current;
         var previousManual = _fieldCache.Values.Where(x => x.IsManual)
             .ToDictionary(x => x.Definition.Key, x => (object?)x.InputText, StringComparer.OrdinalIgnoreCase);
         var selectedIds = _hasConditionSelection
@@ -107,6 +117,7 @@ public sealed class QueryViewModel : ObservableObject
         IsEditingConditions = false;
         RefreshConditionCommands();
         StatusSummary = $"当前配置 · {_snapshot.Rules.Count(x => x.IsEnabled)} 条启用规则";
+        _isLoaded = true;
     }
 
     public async Task StartNewRunAsync()
@@ -174,8 +185,8 @@ public sealed class QueryViewModel : ObservableObject
             if (_context.Slots.TryGetValue(field.Definition.Key, out var slot))
             {
                 var source = slot.Contributions.Select(x => x.RuleId)
-                    .Where(x => x is not null).Distinct().Select(x => _snapshot.Rules.FirstOrDefault(r => r.Id == x)?.Name)
-                    .Where(x => !string.IsNullOrWhiteSpace(x));
+                    .Where(x => x is not null).Select(x => DescribeRuleSourceObject(x!.Value))
+                    .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
                 field.UpdateFromSlot(slot, string.Join("、", source!));
             }
         }
@@ -281,9 +292,17 @@ public sealed class QueryViewModel : ObservableObject
     private string DescribeSlotSource(ElementSlot slot)
     {
         var source = slot.Contributions.Select(x => x.RuleId)
-            .Where(x => x is not null).Distinct().Select(x => _snapshot.Rules.FirstOrDefault(r => r.Id == x)?.Name)
-            .Where(x => !string.IsNullOrWhiteSpace(x));
+            .Where(x => x is not null).Select(x => DescribeRuleSourceObject(x!.Value))
+            .Where(x => !string.IsNullOrWhiteSpace(x)).Distinct(StringComparer.OrdinalIgnoreCase);
         return string.Join("、", source!);
+    }
+
+    private string? DescribeRuleSourceObject(Guid ruleId)
+    {
+        var queryObject = _snapshot.QueryObjects.FirstOrDefault(item => item.Entries.Any(entry =>
+            (entry.RuntimeRuleId == Guid.Empty ? entry.Id : entry.RuntimeRuleId) == ruleId));
+        if (!string.IsNullOrWhiteSpace(queryObject?.Name)) return queryObject.Name;
+        return _snapshot.Rules.FirstOrDefault(rule => rule.Id == ruleId)?.Name;
     }
 
     private string BuildSummary(RunContext context)
@@ -387,7 +406,6 @@ public sealed class QueryConditionOptionViewModel
     public double DisplayWidth => Math.Max(160, Math.Round(Definition.Width * 4d / 7d));
     public string Label => Definition.Label;
     public string Key => Definition.Key;
-    public string Group => Definition.Group;
 
     public QueryConditionOptionViewModel(ElementDefinition definition) => Definition = definition;
 }

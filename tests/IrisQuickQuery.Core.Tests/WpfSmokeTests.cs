@@ -85,7 +85,9 @@ public sealed class WpfSmokeTests
 
                 var ruleEditor = Assert.IsType<ScrollViewer>(rulesPage.FindName("RuleEditorScrollViewer"));
                 var rulesRoot = Assert.IsType<Grid>(rulesPage.FindName("RulesRoot"));
+                var queryObjectLayout = Assert.IsType<Grid>(rulesPage.FindName("QueryObjectLayout"));
                 Assert.Equal("Session", BindingOperations.GetBinding(rulesRoot, FrameworkElement.DataContextProperty)!.Path.Path);
+                Assert.Equal(202.5d, queryObjectLayout.ColumnDefinitions[0].Width.Value);
                 var outputGrid = Assert.IsType<DataGrid>(rulesPage.FindName("OutputMappingsGrid"));
                 Assert.NotNull(rulesPage.FindName("RuleSqlEditor"));
                 var sqlExample = Assert.IsType<TextBlock>(rulesPage.FindName("SqlExampleText"));
@@ -105,9 +107,13 @@ public sealed class WpfSmokeTests
                 Assert.Equal(ScrollBarVisibility.Visible, ruleEditor.VerticalScrollBarVisibility);
                 Assert.IsType<Button>(rulesPage.FindName("ImportRulesButton"));
                 Assert.IsType<Button>(rulesPage.FindName("ExportRulesButton"));
-                Assert.IsType<Border>(rulesPage.FindName("RuleTestSection"));
+                var ruleTestSection = Assert.IsType<Border>(rulesPage.FindName("RuleTestSection"));
+                Assert.Same(app.Resources["SurfaceBrush"], ruleTestSection.Background);
                 Assert.Equal("入口名称", entriesGrid.Columns[0].Header);
-                Assert.Equal("筛选条件（不写 WHERE）", entriesGrid.Columns[1].Header);
+                Assert.Equal("筛选条件", entriesGrid.Columns[1].Header);
+                Assert.Equal("排序", entriesGrid.Columns[4].Header);
+                Assert.Equal(2d, entriesGrid.Columns[1].Width.Value);
+                Assert.Equal(DataGridLengthUnitType.Star, entriesGrid.Columns[1].Width.UnitType);
                 Assert.NotEmpty(Assert.IsType<DataGridComboBoxColumn>(entriesGrid.Columns[2]).ItemsSource);
 
                 var mappingTestDirectory = Path.Combine(Path.GetTempPath(), "IrisQuickQueryWpfTests", Guid.NewGuid().ToString("N"));
@@ -155,8 +161,10 @@ public sealed class WpfSmokeTests
                 Assert.Same(queryActions, clearQuery.Parent);
                 Assert.Same(queryActions, runQuery.Parent);
                 Assert.Equal(1, Grid.GetColumn(queryActions));
-                Assert.True(Assert.IsType<ItemsControl>(queryPage.FindName("ConditionsItemsControl")).AllowDrop);
+                var conditionItems = Assert.IsType<ItemsControl>(queryPage.FindName("ConditionsItemsControl"));
+                Assert.True(conditionItems.AllowDrop);
                 Assert.IsType<Border>(queryPage.FindName("RuleTraceSection"));
+                Assert.Null(queryPage.FindName("QueryStatusRail"));
                 var editableQueryField = Assert.IsType<Style>(queryPage.Resources["EditableQueryField"]);
                 Assert.Equal(16d, editableQueryField.Setters.OfType<Setter>()
                     .Single(x => x.Property == Control.FontSizeProperty).Value);
@@ -173,15 +181,42 @@ public sealed class WpfSmokeTests
                 queryPage.Arrange(new Rect(0, 0, 1180, 800));
                 queryPage.UpdateLayout();
 
+                conditionItems.ItemsSource = new[]
+                {
+                    new ElementFieldViewModel(new ElementDefinition
+                        { Key = "readonly_value", Label = "只读值", CanInput = false })
+                };
+                queryPage.UpdateLayout();
+                var selectableReadOnlyValue = FindVisualChildren<TextBox>(conditionItems)
+                    .Single(box => box.IsReadOnly);
+                Assert.True(selectableReadOnlyValue.IsReadOnlyCaretVisible);
+
                 var elementsGrid = Assert.IsType<DataGrid>(elementsPage.FindName("ElementsGrid"));
                 var headers = elementsGrid.Columns.Select(x => x.Header?.ToString()).ToArray();
                 Assert.DoesNotContain("类型", headers);
                 Assert.DoesNotContain("角色", headers);
                 Assert.DoesNotContain("顺序", headers);
+                Assert.DoesNotContain("分组", headers);
+                Assert.DoesNotContain("校验正则（可选）", headers);
+                Assert.DoesNotContain("敏感", headers);
                 Assert.Contains("是否日期", headers);
                 Assert.Equal("全局元素", headers[0]);
-                Assert.IsType<Button>(elementsPage.FindName("SaveElementsButton"));
-                Assert.IsType<Button>(rulesPage.FindName("SaveRulesButton"));
+                Assert.False(elementsGrid.CanUserSortColumns);
+                Assert.Equal(560d, elementsGrid.Width);
+                Assert.Equal(HorizontalAlignment.Left, elementsGrid.HorizontalAlignment);
+                Assert.All(elementsGrid.Columns, column => Assert.Equal(DataGridLengthUnitType.Pixel, column.Width.UnitType));
+                var saveElements = Assert.IsType<Button>(elementsPage.FindName("SaveElementsButton"));
+                var saveRules = Assert.IsType<Button>(rulesPage.FindName("SaveRulesButton"));
+                Assert.Equal("elements", saveElements.CommandParameter);
+                Assert.Equal("rules", saveRules.CommandParameter);
+                Assert.Equal(72d, saveElements.Width);
+                Assert.Equal(36d, saveElements.Height);
+                Assert.Equal(52d, Assert.IsType<Grid>(elementsPage.FindName("ElementsFooter")).Height);
+                Assert.Equal(52d, Assert.IsType<Grid>(rulesPage.FindName("RulesFooter")).Height);
+                var elementStatus = Assert.IsType<TextBlock>(elementsPage.FindName("ElementStatusText"));
+                var rulesStatus = Assert.IsType<TextBlock>(rulesPage.FindName("RulesStatusText"));
+                Assert.Equal("ElementStatusMessage", BindingOperations.GetBinding(elementStatus, TextBlock.TextProperty)!.Path.Path);
+                Assert.Equal("StatusMessage", BindingOperations.GetBinding(rulesStatus, TextBlock.TextProperty)!.Path.Path);
                 Assert.Equal(15, elementsGrid.FontSize);
                 Assert.Equal(40, elementsGrid.RowHeight);
                 Assert.Equal(42, elementsGrid.ColumnHeaderHeight);
