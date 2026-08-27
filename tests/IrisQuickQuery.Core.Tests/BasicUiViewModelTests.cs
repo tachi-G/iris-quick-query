@@ -54,6 +54,35 @@ public sealed class BasicUiViewModelTests
     }
 
     [Fact]
+    public void QueryRefresh_InvalidatesStaleClipboardFeedback()
+    {
+        var definition = new ElementDefinition { Key = "registration_no", Label = "登记号" };
+        var field = new ElementFieldViewModel(definition);
+        var staleRequest = field.BeginCopyFeedback();
+        field.CompleteCopyFeedback(staleRequest, "剪贴板忙，请重试");
+        var slot = new ElementSlot(definition.Key);
+        slot.AddOrReplace(new ValueContribution("rule:test", "R0001", false, Guid.NewGuid(), new HashSet<string>()));
+
+        field.UpdateFromSlot(slot, "患者信息");
+        field.CompleteCopyFeedback(staleRequest, "剪贴板忙，请重试");
+
+        Assert.Equal("R0001", field.InputText);
+        Assert.Empty(field.CopyHint);
+    }
+
+    [Fact]
+    public void Clear_RemovesClipboardFeedback()
+    {
+        var field = new ElementFieldViewModel(new ElementDefinition { Key = "registration_no" });
+        var request = field.BeginCopyFeedback();
+        field.CompleteCopyFeedback(request, "已复制");
+
+        field.Clear();
+
+        Assert.Empty(field.CopyHint);
+    }
+
+    [Fact]
     public void ListResult_FormatsMappedDateColumnsConsistently()
     {
         var snapshot = TestConfig.CreateElements("visit_date");

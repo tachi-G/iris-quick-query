@@ -1,5 +1,5 @@
 #define MyAppName "IRIS 元素化快捷查询"
-#define MyAppVersion "1.0.19"
+#define MyAppVersion "1.0.21"
 #define MyAppPublisher "Hospital Operations"
 #define MyAppExeName "IrisQuickQuery.exe"
 #define PublishDir "..\artifacts\publish\win-x64"

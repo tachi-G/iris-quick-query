@@ -126,6 +126,7 @@ public sealed class QueryViewModel : ObservableObject
         _runCancellation?.Dispose();
         _runCancellation = new CancellationTokenSource();
         await LoadSnapshotIfChangedAsync();
+        foreach (var field in _fieldCache.Values) field.ClearCopyFeedback();
         var manual = Fields.Where(x => x.IsManual && !string.IsNullOrWhiteSpace(x.InputText))
             .ToDictionary(x => x.Definition.Key, x => (object?)x.InputText, StringComparer.OrdinalIgnoreCase);
         _context = new RunContext(_snapshot, manual);
@@ -153,10 +154,30 @@ public sealed class QueryViewModel : ObservableObject
         var value = !string.IsNullOrEmpty(selectedText)
             ? selectedText
             : !string.IsNullOrEmpty(field.FullValue) ? field.FullValue : field.InputText;
-        if (string.IsNullOrEmpty(value)) return;
-        field.CopyHint = await ClipboardCopyService.TrySetTextAsync(value)
-            ? "已复制"
-            : "剪贴板忙，请重试";
+        if (string.IsNullOrEmpty(value))
+        {
+            field.ClearCopyFeedback();
+            return;
+        }
+
+        var feedbackVersion = field.BeginCopyFeedback();
+        try
+        {
+            field.CompleteCopyFeedback(feedbackVersion, await ClipboardCopyService.TrySetTextAsync(value)
+                ? "已复制"
+                : "剪贴板忙，请重试");
+        }
+        catch
+        {
+            field.CompleteCopyFeedback(feedbackVersion, "复制失败，请重试");
+        }
+        _ = ClearCopyFeedbackLaterAsync(field, feedbackVersion);
+    }
+
+    private static async Task ClearCopyFeedbackLaterAsync(ElementFieldViewModel field, long feedbackVersion)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(2));
+        field.ClearCopyFeedback(feedbackVersion);
     }
 
     private async Task SelectListRowAsync(Guid executionId, int index)
@@ -413,6 +434,7 @@ public sealed class ElementFieldViewModel : ObservableObject
     private string _stateLabel = "可输入";
     private string _sourceLabel = string.Empty;
     private string _copyHint = string.Empty;
+    private long _copyFeedbackVersion;
     private bool _isManual;
     private bool _isDerivedReadOnly;
     private bool _isEditing;
@@ -433,7 +455,7 @@ public sealed class ElementFieldViewModel : ObservableObject
 
     public ElementFieldViewModel(ElementDefinition definition) => Definition = definition;
     public void SetInitialManual(string value) { _suppressManualFlag = true; InputText = value; _suppressManualFlag = false; IsManual = true; }
-    public void BeginEdit() { if (!IsDerivedReadOnly) return; _editBackup = InputText; IsEditing = true; CopyHint = string.Empty; }
+    public void BeginEdit() { if (!IsDerivedReadOnly) return; _editBackup = InputText; IsEditing = true; ClearCopyFeedback(); }
     public void CommitEditAsManual() { IsEditing = false; IsDerivedReadOnly = false; IsManual = true; StateLabel = "人工输入"; }
     public void CancelEdit() { _suppressManualFlag = true; InputText = _editBackup; _suppressManualFlag = false; IsEditing = false; }
 
@@ -442,6 +464,7 @@ public sealed class ElementFieldViewModel : ObservableObject
         var display = slot.State == ElementRuntimeState.Conflict
             ? string.Join(" / ", slot.Contributions.Select(x => Format(x.Value)).Distinct())
             : slot.EffectiveValue is null ? string.Empty : Format(slot.EffectiveValue);
+        ClearCopyFeedback();
         _suppressManualFlag = true; InputText = display; _suppressManualFlag = false;
         FullValue = display; SourceLabel = source;
         IsManual = slot.State == ElementRuntimeState.Manual;
@@ -458,8 +481,34 @@ public sealed class ElementFieldViewModel : ObservableObject
 
     public void Clear()
     {
+        ClearCopyFeedback();
         _suppressManualFlag = true; InputText = string.Empty; _suppressManualFlag = false;
         FullValue = string.Empty; IsManual = false; IsDerivedReadOnly = false; IsEditing = false; StateLabel = Definition.CanInput ? "可输入" : "等待结果"; SourceLabel = string.Empty;
+    }
+
+    internal long BeginCopyFeedback()
+    {
+        var version = ++_copyFeedbackVersion;
+        CopyHint = string.Empty;
+        return version;
+    }
+
+    internal void CompleteCopyFeedback(long version, string message)
+    {
+        if (_copyFeedbackVersion == version) CopyHint = message;
+    }
+
+    internal void ClearCopyFeedback()
+    {
+        _copyFeedbackVersion++;
+        CopyHint = string.Empty;
+    }
+
+    internal void ClearCopyFeedback(long version)
+    {
+        if (_copyFeedbackVersion != version) return;
+        _copyFeedbackVersion++;
+        CopyHint = string.Empty;
     }
 
     private string Format(object value)

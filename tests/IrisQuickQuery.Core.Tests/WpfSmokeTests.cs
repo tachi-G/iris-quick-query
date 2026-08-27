@@ -84,6 +84,22 @@ public sealed class WpfSmokeTests
                 Assert.True(NestedScrollCoordinator.CanScroll(scrollProbe, 120));
                 Assert.False(NestedScrollCoordinator.CanScroll(scrollProbe, -120));
 
+                var logicalPanel = new StackPanel();
+                for (var index = 0; index < 30; index++) logicalPanel.Children.Add(new Border { Height = 20 });
+                var logicalScrollProbe = new ScrollViewer
+                {
+                    Height = 100,
+                    CanContentScroll = true,
+                    Content = logicalPanel
+                };
+                logicalScrollProbe.Measure(new Size(200, 100));
+                logicalScrollProbe.Arrange(new Rect(0, 0, 200, 100));
+                logicalScrollProbe.UpdateLayout();
+                Assert.True(NestedScrollCoordinator.TryScroll(logicalScrollProbe, -120));
+                logicalScrollProbe.UpdateLayout();
+                Assert.True(logicalScrollProbe.VerticalOffset > 0);
+                Assert.True(logicalScrollProbe.VerticalOffset < logicalScrollProbe.ScrollableHeight);
+
                 var ruleEditor = Assert.IsType<ScrollViewer>(rulesPage.FindName("RuleEditorScrollViewer"));
                 var rulesRoot = Assert.IsType<Grid>(rulesPage.FindName("RulesRoot"));
                 var queryObjectLayout = Assert.IsType<Grid>(rulesPage.FindName("QueryObjectLayout"));
@@ -169,6 +185,11 @@ public sealed class WpfSmokeTests
                 var editableQueryField = Assert.IsType<Style>(queryPage.Resources["EditableQueryField"]);
                 Assert.Equal(16d, editableQueryField.Setters.OfType<Setter>()
                     .Single(x => x.Property == Control.FontSizeProperty).Value);
+                Assert.Equal(40d, editableQueryField.Setters.OfType<Setter>()
+                    .Single(x => x.Property == FrameworkElement.HeightProperty).Value);
+                var readOnlyQueryField = Assert.IsType<Style>(queryPage.Resources["ReadOnlyFieldValue"]);
+                Assert.Equal(40d, readOnlyQueryField.Setters.OfType<Setter>()
+                    .Single(x => x.Property == FrameworkElement.HeightProperty).Value);
                 Assert.Null(queryPage.FindName("ConditionAddButton"));
                 var conditionPicker = Assert.IsType<Border>(queryPage.FindName("ConditionPicker"));
                 var availableConditions = Assert.IsType<ItemsControl>(queryPage.FindName("AvailableConditionsList"));
@@ -191,6 +212,7 @@ public sealed class WpfSmokeTests
                 var selectableReadOnlyValue = FindVisualChildren<TextBox>(conditionItems)
                     .Single(box => box.IsReadOnly);
                 Assert.True(selectableReadOnlyValue.IsReadOnlyCaretVisible);
+                Assert.Equal(0d, selectableReadOnlyValue.MinHeight);
                 Assert.Contains(selectableReadOnlyValue.CommandBindings.Cast<CommandBinding>(),
                     binding => binding.Command == ApplicationCommands.Copy);
 

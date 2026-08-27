@@ -54,7 +54,24 @@ public static class NestedScrollCoordinator
     }
 
     private static void Scroll(ScrollViewer viewer, int delta)
-        => viewer.ScrollToVerticalOffset(Math.Clamp(viewer.VerticalOffset - delta * 0.6, 0, viewer.ScrollableHeight));
+    {
+        if (viewer.CanContentScroll)
+        {
+            var wheelNotches = Math.Max(1, (int)Math.Ceiling(Math.Abs(delta) / (double)Mouse.MouseWheelDeltaForOneLine));
+            var configuredLines = SystemParameters.WheelScrollLines;
+            var linesPerNotch = configuredLines < 0 ? 3 : Math.Clamp(configuredLines, 1, 10);
+            var lineCount = wheelNotches * linesPerNotch;
+            for (var index = 0; index < lineCount; index++)
+            {
+                if (delta > 0) viewer.LineUp();
+                else viewer.LineDown();
+            }
+            return;
+        }
+
+        var pixelDelta = delta / (double)Mouse.MouseWheelDeltaForOneLine * 48;
+        viewer.ScrollToVerticalOffset(Math.Clamp(viewer.VerticalOffset - pixelDelta, 0, viewer.ScrollableHeight));
+    }
 
     private static DependencyObject? GetParent(DependencyObject child)
     {

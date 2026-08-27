@@ -53,8 +53,8 @@
             <Setter Property="Background" Value="{StaticResource BorderSubtleBrush}"/>
             <Setter Property="BorderBrush" Value="{StaticResource BorderStrongBrush}"/>
             <Setter Property="BorderThickness" Value="0,0,0,1"/>
-            <Setter Property="Padding" Value="12,9"/>
-            <Setter Property="MinHeight" Value="40"/>
+            <Setter Property="Padding" Value="12,0"/>
+            <Setter Property="Height" Value="40"/>
             <Style.Triggers>
                 <Trigger Property="IsKeyboardFocusWithin" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
@@ -67,6 +67,7 @@
             <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
             <Setter Property="FontSize" Value="16"/>
             <Setter Property="Padding" Value="8,7"/>
+            <Setter Property="Height" Value="40"/>
         </Style>
     </UserControl.Resources>
 
@@ -201,7 +202,7 @@
                                              Visibility="{Binding IsEditorVisible,Converter={StaticResource BoolCollapsed}}">
                                         <Grid>
                                             <TextBox Text="{Binding InputText,Mode=OneWay}" FontSize="16" Foreground="{StaticResource TextMutedBrush}"
-                                                     Background="Transparent" BorderThickness="0" Padding="0" IsReadOnly="True"
+                                                     Background="Transparent" BorderThickness="0" Padding="0" MinHeight="0" IsReadOnly="True"
                                                      IsReadOnlyCaretVisible="True" VerticalContentAlignment="Center"
                                                      PreviewMouseLeftButtonDown="ReadOnlyField_OnPreviewMouseLeftButtonDown" Tag="{Binding}"
                                                      PreviewKeyDown="ReadOnlyField_OnPreviewKeyDown">
