@@ -115,7 +115,7 @@ public partial class QueryPage : UserControl
         if (sender is not TextBox { Tag: ElementFieldViewModel field } box) return;
         e.Handled = true;
         try { await (ViewModel?.CopyFieldAsync(field, box.SelectionLength > 0 ? box.SelectedText : null) ?? Task.CompletedTask); }
-        catch { field.CopyHint = "剪贴板忙，请重试"; }
+        catch { field.ClearCopyFeedback(); }
     }
 
     private void FieldEditor_OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
